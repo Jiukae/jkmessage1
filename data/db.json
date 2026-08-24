@@ -1,0 +1,19 @@
+{
+  "users": [
+    {
+      "id": "user_jiuk",
+      "username": "jiuk",
+      "name": "지욱 (Jiuk)",
+      "password": "password123",
+      "avatarBg": "from-blue-500 to-indigo-600",
+      "avatarEmoji": "⚡",
+      "customStatus": "새로운 프로젝트 구상 중 ✨",
+      "status": "online",
+      "lastSeen": 1786715234572,
+      "createdAt": 1786269424508,
+      "dndUntil": null
+    }
+  ],
+  "friendRequests": [],
+  "messages": []
+}

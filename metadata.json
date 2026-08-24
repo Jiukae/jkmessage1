@@ -1,0 +1,6 @@
+{
+  "name": "JK Message",
+  "description": "아이디 기반 회원가입, 1:1 대화, 다자간 단체 채팅방 개설 및 파일 첨부 지원 실시간 메신저",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

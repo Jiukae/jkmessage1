@@ -1,0 +1,89 @@
+{
+  "entities": {
+    "users": {
+      "title": "User",
+      "description": "User account and profile information",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique user ID" },
+        "username": { "type": "string", "description": "Unique lowercase username" },
+        "name": { "type": "string", "description": "Display name" },
+        "password": { "type": "string", "description": "User password" },
+        "avatarBg": { "type": "string", "description": "Avatar background color/gradient" },
+        "avatarEmoji": { "type": "string", "description": "Avatar emoji" },
+        "customStatus": { "type": "string", "description": "Custom status bio message" },
+        "status": { "type": "string", "description": "User status (online, dnd, offline)" },
+        "dndUntil": { "type": "number", "description": "DND timestamp expiry", "nullable": true },
+        "lastSeen": { "type": "number", "description": "Last active timestamp" },
+        "createdAt": { "type": "number", "description": "Account creation timestamp" }
+      },
+      "required": ["id", "username", "name", "avatarBg", "avatarEmoji", "status", "lastSeen", "createdAt"]
+    },
+    "friendRequests": {
+      "title": "FriendRequest",
+      "description": "Friend requests between users",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Request ID" },
+        "senderId": { "type": "string", "description": "Sender User ID" },
+        "receiverId": { "type": "string", "description": "Receiver User ID" },
+        "status": { "type": "string", "description": "Request status (pending, accepted, rejected)" },
+        "createdAt": { "type": "number", "description": "Creation timestamp" }
+      },
+      "required": ["id", "senderId", "receiverId", "status", "createdAt"]
+    },
+    "groups": {
+      "title": "GroupRoom",
+      "description": "Group chat rooms",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Group ID" },
+        "name": { "type": "string", "description": "Group room name" },
+        "creatorId": { "type": "string", "description": "Creator User ID" },
+        "participantIds": { "type": "array", "items": { "type": "string" }, "description": "List of member user IDs" },
+        "avatarBg": { "type": "string", "description": "Group avatar gradient" },
+        "avatarEmoji": { "type": "string", "description": "Group avatar emoji" },
+        "createdAt": { "type": "number", "description": "Creation timestamp" },
+        "updatedAt": { "type": "number", "description": "Update timestamp" }
+      },
+      "required": ["id", "name", "creatorId", "participantIds", "avatarBg", "avatarEmoji", "createdAt", "updatedAt"]
+    },
+    "messages": {
+      "title": "Message",
+      "description": "Chat messages (1:1 and group)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Message ID" },
+        "conversationId": { "type": "string", "description": "Conversation ID or group ID" },
+        "senderId": { "type": "string", "description": "Sender User ID" },
+        "receiverId": { "type": "string", "description": "Receiver User ID or 'group'" },
+        "text": { "type": "string", "description": "Message content" },
+        "createdAt": { "type": "number", "description": "Message sent timestamp" },
+        "read": { "type": "boolean", "description": "Read status" },
+        "readBy": { "type": "array", "items": { "type": "string" } },
+        "replyTo": { "type": "object" },
+        "reactions": { "type": "object" },
+        "attachment": { "type": "object" }
+      },
+      "required": ["id", "conversationId", "senderId", "receiverId", "text", "createdAt", "read"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "users",
+      "description": "User accounts"
+    },
+    "/friendRequests/{requestId}": {
+      "schema": "friendRequests",
+      "description": "Friend requests"
+    },
+    "/groups/{groupId}": {
+      "schema": "groups",
+      "description": "Group chat rooms"
+    },
+    "/messages/{messageId}": {
+      "schema": "messages",
+      "description": "Chat messages"
+    }
+  }
+}
