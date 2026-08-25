@@ -6,12 +6,14 @@ interface UserDetailModalProps {
   user: User;
   isOnline: boolean;
   onClose: () => void;
+  onStartChat?: (user: User) => void;
 }
 
 export const UserDetailModal: React.FC<UserDetailModalProps> = ({
   user,
   isOnline,
   onClose,
+  onStartChat,
 }) => {
   const [copied, setCopied] = useState(false);
 
@@ -20,6 +22,8 @@ export const UserDetailModal: React.FC<UserDetailModalProps> = ({
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  const isAdmin = user.username.toLowerCase() === 'jiukhan0215';
 
   const formattedDate = user.createdAt
     ? new Date(user.createdAt).toLocaleDateString('ko-KR', {
@@ -31,7 +35,7 @@ export const UserDetailModal: React.FC<UserDetailModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-md flex items-center justify-center p-3 sm:p-4">
-      <div className="w-full max-w-sm max-h-[92vh] flex flex-col bg-[#121622]/90 border border-white/15 rounded-3xl shadow-2xl backdrop-blur-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+      <div className="w-full max-w-sm max-h-[92vh] flex flex-col bg-[#121622]/95 border border-white/15 rounded-3xl shadow-2xl backdrop-blur-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
         
         {/* Top Banner */}
         <div className={`shrink-0 h-24 bg-gradient-to-r ${user.avatarBg || 'from-blue-600 to-purple-600'} relative p-4 flex justify-end border-b border-white/10`}>
@@ -61,7 +65,16 @@ export const UserDetailModal: React.FC<UserDetailModalProps> = ({
           </div>
 
           <div className="space-y-1">
-            <h3 className="text-xl font-bold text-white">{user.name}</h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-xl font-bold text-white">{user.name}</h3>
+              {isAdmin && (
+                <span className="px-2 py-0.5 text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-lg flex items-center gap-1">
+                  <Shield className="w-3 h-3" />
+                  <span>관리자</span>
+                </span>
+              )}
+            </div>
+
             <div className="flex items-center gap-2">
               <span className="text-sm text-blue-400 font-mono font-medium">
                 @{user.username}
@@ -107,14 +120,28 @@ export const UserDetailModal: React.FC<UserDetailModalProps> = ({
             </div>
           </div>
 
-          <div className="mt-5">
+          <div className="mt-5 flex items-center gap-2">
+            {onStartChat && (
+              <button
+                id="start-chat-from-detail-btn"
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onStartChat(user);
+                }}
+                className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-2xl text-sm shadow-lg shadow-blue-600/30 border border-blue-400/30 transition-colors flex items-center justify-center gap-1.5"
+              >
+                <MessageSquare className="w-4 h-4" />
+                <span>대화하기</span>
+              </button>
+            )}
             <button
               id="confirm-user-detail-btn"
               type="button"
               onClick={onClose}
-              className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-2xl text-sm shadow-lg shadow-blue-600/30 border border-blue-400/30 transition-colors"
+              className={`${onStartChat ? 'px-4' : 'w-full'} py-2.5 bg-white/10 hover:bg-white/15 text-white font-semibold rounded-2xl text-sm border border-white/10 transition-colors`}
             >
-              확인
+              닫기
             </button>
           </div>
 

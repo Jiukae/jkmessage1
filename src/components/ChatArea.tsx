@@ -27,6 +27,7 @@ import {
   SmilePlus,
   Heart,
   ThumbsUp,
+  Terminal,
 } from 'lucide-react';
 
 interface ChatAreaProps {
@@ -351,7 +352,33 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
             </button>
           )}
 
-          {isGroup && group ? (
+          {conversationId === 'conv_command' || partner?.id === 'bot_command' ? (
+            /* Admin Command Terminal Header */
+            <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 p-1 rounded-2xl">
+              <div className="relative shrink-0">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-500 to-red-600 border border-amber-400/40 flex items-center justify-center text-lg shadow-md shadow-amber-500/20">
+                  ⚡
+                </div>
+                <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-400 border-2 border-[#0c0e14]" />
+              </div>
+
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-bold text-sm text-amber-300 truncate flex items-center gap-1">
+                    <Terminal className="w-4 h-4 text-amber-400" />
+                    <span>시스템 명령어 터미널</span>
+                  </span>
+                  <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded-md border border-amber-400/30 shrink-0 font-bold">
+                    ADMIN ONLY
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1.5 text-xs text-amber-200/60 font-mono">
+                  <span>/help 로 사용 가능한 전체 관리자 명령어 목록을 확인하세요</span>
+                </div>
+              </div>
+            </div>
+          ) : isGroup && group ? (
             /* Group Header */
             <div
               onClick={onOpenGroupInfo}
@@ -722,7 +749,13 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
 
                       {/* Text content */}
                       {msg.text && (
-                        <p className="whitespace-pre-wrap break-words">{msg.text}</p>
+                        msg.senderId === 'bot_command' ? (
+                          <div className="font-mono text-xs bg-black/60 border border-amber-500/30 p-3 rounded-xl text-amber-200/90 leading-relaxed whitespace-pre-wrap select-text">
+                            {msg.text}
+                          </div>
+                        ) : (
+                          <p className="whitespace-pre-wrap break-words">{msg.text}</p>
+                        )
                       )}
                     </div>
 
@@ -978,6 +1011,40 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
 
       {/* Message Input Bottom Bar */}
       <footer className="p-3 sm:p-4 md:p-5 bg-black/20 border-t border-white/10 backdrop-blur-xl shrink-0">
+        
+        {/* Admin Quick Command Chips */}
+        {(conversationId === 'conv_command' || partner?.id === 'bot_command') && (
+          <div className="mb-2.5 flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+            <span className="text-[10px] text-amber-300/60 font-mono shrink-0 mr-1 flex items-center gap-1">
+              <Terminal className="w-3 h-3 text-amber-400" />
+              <span>빠른 명령어:</span>
+            </span>
+            {[
+              { label: '📋 /help', cmd: '/help' },
+              { label: '👥 /users', cmd: '/users' },
+              { label: '📊 /stats', cmd: '/stats' },
+              { label: '📢 /broadcast', cmd: '/broadcast ' },
+              { label: '👤 /info', cmd: '/info ' },
+              { label: '🟢 /status online', cmd: '/status online' },
+              { label: '🔴 /status dnd', cmd: '/status dnd' },
+              { label: '💾 /db', cmd: '/db' },
+              { label: '🧹 /clear', cmd: '/clear' },
+            ].map((chip) => (
+              <button
+                key={chip.label}
+                type="button"
+                onClick={() => {
+                  setInputText(chip.cmd);
+                  textareaRef.current?.focus();
+                }}
+                className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-200 border border-amber-500/30 text-[11px] font-mono whitespace-nowrap transition-colors"
+              >
+                {chip.label}
+              </button>
+            ))}
+          </div>
+        )}
+
         <form onSubmit={handleSend} className="flex items-center gap-2 sm:gap-3 bg-white/5 border border-white/10 rounded-2xl p-2 focus-within:border-indigo-400/40 focus-within:ring-1 focus-within:ring-indigo-500/30 transition-all backdrop-blur-sm">
           
           {/* Action buttons on left */}

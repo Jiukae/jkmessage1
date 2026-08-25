@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { User, Conversation, Message, MessageReply, UserStatusMode, FriendRequest, GroupRoom, MessageAttachment } from './types';
-import { AuthModal } from './components/AuthModal';
 import { Sidebar } from './components/Sidebar';
 import { ChatArea } from './components/ChatArea';
+import { RegisterPage } from './components/RegisterPage';
+import { BottomRightProfile } from './components/BottomRightProfile';
 import { NewChatModal } from './components/NewChatModal';
 import { ProfileModal } from './components/ProfileModal';
 import { UserDetailModal } from './components/UserDetailModal';
@@ -13,10 +14,24 @@ import { CreateGroupModal } from './components/CreateGroupModal';
 import { GroupInfoModal } from './components/GroupInfoModal';
 import { sendBrowserNotification, getNotificationPermission } from './utils/notifications';
 import { sounds } from './utils/audio';
-import { MessageSquare, ArrowLeft, Users, ShieldAlert, UserPlus } from 'lucide-react';
+import {
+  MessageSquare,
+  ArrowLeft,
+  Users,
+  ShieldAlert,
+  UserPlus,
+  Radio,
+  Search,
+  Sparkles,
+  Shield,
+  X,
+  Volume2,
+  VolumeX,
+} from 'lucide-react';
 
 // Helper to extract partner user ID from conversationId
 function getOtherUserIdFromConvId(convId: string, myId: string): string | undefined {
+  if (convId === 'conv_command') return 'bot_command';
   if (convId.startsWith('group_')) return undefined;
   if (convId.includes('__')) {
     const parts = convId.replace(/^conv_/, '').split('__');
@@ -39,10 +54,13 @@ function getOtherUserIdFromConvId(convId: string, myId: string): string | undefi
 }
 
 export default function App() {
+  // Current user & app view state
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     const saved = localStorage.getItem('id_messenger_user');
     return saved ? JSON.parse(saved) : null;
   });
+
+  const [appView, setAppView] = useState<'messenger' | 'register'>('messenger');
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [friends, setFriends] = useState<User[]>([]);
@@ -56,8 +74,10 @@ export default function App() {
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | 'unsupported'>(() => getNotificationPermission());
   const [pendingFriendRequestsCount, setPendingFriendRequestsCount] = useState<number>(0);
 
+  // Broadcast banner
+  const [broadcastAlert, setBroadcastAlert] = useState<string | null>(null);
+
   // Modals state
-  const [showNewChatModal, setShowNewChatModal] = useState(false);
   const [showCreateGroupModal, setShowCreateGroupModal] = useState(false);
   const [showGroupInfoModal, setShowGroupInfoModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -65,6 +85,7 @@ export default function App() {
   const [showNotificationPrompt, setShowNotificationPrompt] = useState(false);
   const [showStatusPicker, setShowStatusPicker] = useState(false);
   const [showAddFriendModal, setShowAddFriendModal] = useState(false);
+  const [selectedExploreUser, setSelectedExploreUser] = useState<User | null>(null);
 
   // Mobile navigation state
   const [mobileView, setMobileView] = useState<'sidebar' | 'chat'>('sidebar');
@@ -95,6 +116,18 @@ export default function App() {
     const found = conversations.find((c) => c.id === activeConversationId);
     if (found) return found;
 
+    // Special Command Bot fallback
+    if (activeConversationId === 'conv_command') {
+      return {
+        id: 'conv_command',
+        isGroup: false,
+        isCommandBot: true,
+        participantIds: [currentUser.id, 'bot_command'],
+        unreadCount: 0,
+        updatedAt: Date.now(),
+      } as Conversation;
+    }
+
     // Direct fallback
     if (!activeConversationId.startsWith('group_')) {
       const otherId = getOtherUserIdFromConvId(activeConversationId, currentUser.id);
@@ -123,6 +156,17 @@ export default function App() {
   // Active Partner user object (for 1:1)
   const partnerUser = useMemo(() => {
     if (isGroupActive || !activeConversationId || !currentUser) return null;
+    if (activeConversationId === 'conv_command') {
+      return {
+        id: 'bot_command',
+        username: 'command_bot',
+        name: '시스템 관리자 터미널',
+        avatarBg: 'from-amber-500 to-red-600',
+        avatarEmoji: '⚡',
+        status: 'online',
+        customStatus: '관리자 전용 명령어 콘솔',
+      } as User;
+    }
     if (activeConversation?.otherUser) return activeConversation.otherUser;
 
     const otherId = getOtherUserIdFromConvId(activeConversationId, currentUser.id);
@@ -147,12 +191,13 @@ export default function App() {
   }, [isGroupActive, activeGroup, currentUser, friends, allUsers]);
 
   // Save currentUser to localStorage
-  const handleLoginSuccess = (user: User, token: string, isNewRegistration?: boolean) => {
+  const handleLoginSuccess = (user: User, token: string = 'demo_token', isNewRegistration?: boolean) => {
     localStorage.setItem('id_messenger_user', JSON.stringify(user));
     localStorage.setItem('id_messenger_token', token);
     setCurrentUser(user);
     setActiveConversationId(null);
     setMobileView('sidebar');
+    setAppView('messenger');
 
     if (isNewRegistration || getNotificationPermission() === 'default') {
       setTimeout(() => {
@@ -211,10 +256,10 @@ export default function App() {
     }
   }, []);
 
-  // Fetch all users
-  const fetchAllUsers = useCallback(async (userId: string) => {
+  // Fetch all users (works for both guests and authenticated users)
+  const fetchAllUsers = useCallback(async (userId?: string) => {
     try {
-      const res = await fetch(`/api/users/search?currentUserId=${userId}`);
+      const res = await fetch(`/api/users/search?currentUserId=${encodeURIComponent(userId || '')}`);
       if (!res.ok) return;
       const data = await res.json();
       setAllUsers(data.users || []);
@@ -245,28 +290,32 @@ export default function App() {
     }
   }, []);
 
-  // Initialize data on user change
-  const currentUserId = currentUser?.id;
+  // Fetch initial data when user changes
   useEffect(() => {
-    if (!currentUserId) return;
-    fetchFriends(currentUserId);
-    fetchPendingFriendRequests(currentUserId);
-    fetchConversations(currentUserId);
-    fetchAllUsers(currentUserId);
-  }, [currentUserId, fetchFriends, fetchPendingFriendRequests, fetchConversations, fetchAllUsers]);
+    if (currentUser?.id) {
+      fetchFriends(currentUser.id);
+      fetchPendingFriendRequests(currentUser.id);
+      fetchConversations(currentUser.id);
+      fetchAllUsers(currentUser.id);
+    } else {
+      // Guest mode: fetch user list for directory
+      fetchAllUsers('');
+    }
+  }, [currentUser, fetchFriends, fetchPendingFriendRequests, fetchConversations, fetchAllUsers]);
 
   // Load messages when active conversation changes
   useEffect(() => {
-    if (!currentUserId || !activeConversationId) return;
-    fetchMessages(activeConversationId, currentUserId);
-  }, [activeConversationId, currentUserId, fetchMessages]);
+    if (!currentUser?.id || !activeConversationId) return;
+    fetchMessages(activeConversationId, currentUser.id);
+  }, [currentUser, activeConversationId, fetchMessages]);
 
-  // Setup WebSocket connection - with Heartbeat, Auto-reconnect, and Real-time event handling
+  // WebSocket Connection
   useEffect(() => {
+    const currentUserId = currentUser?.id;
     if (!currentUserId) return;
 
-    let isUnmounted = false;
     let ws: WebSocket | null = null;
+    let isUnmounted = false;
     let pingInterval: NodeJS.Timeout | null = null;
     let reconnectTimeout: NodeJS.Timeout | null = null;
 
@@ -329,6 +378,18 @@ export default function App() {
               break;
             }
 
+            case 'system:broadcast': {
+              const bText = msg.payload?.text;
+              if (bText) {
+                sounds.playIncomingMessage();
+                setBroadcastAlert(bText);
+                sendBrowserNotification('📢 시스템 전체 공지', {
+                  body: bText,
+                });
+              }
+              break;
+            }
+
             case 'user:profile_updated': {
               const updatedUser: User = msg.payload?.user;
               if (!updatedUser) break;
@@ -358,9 +419,6 @@ export default function App() {
               if (me) fetchPendingFriendRequests(me.id);
               if (me && me.status !== 'dnd') {
                 sounds.playIncomingMessage();
-                sendBrowserNotification('새 친구 요청', {
-                  body: `${msg.payload?.request?.sender?.name || '새 사용자'}님이 친구 요청을 보냈습니다!`,
-                });
               }
               break;
             }
@@ -368,205 +426,123 @@ export default function App() {
             case 'friend:response': {
               if (me) {
                 fetchFriends(me.id);
-                fetchConversations(me.id);
                 fetchPendingFriendRequests(me.id);
-              }
-              if (msg.payload?.accepted && me && me.status !== 'dnd') {
-                sounds.playIncomingMessage();
-                sendBrowserNotification('친구 수락 완료', {
-                  body: `친구 요청이 수락되어 대화를 시작할 수 있습니다 🎉`,
-                });
+                fetchAllUsers(me.id);
               }
               break;
             }
 
-            case 'group:created':
-            case 'group:updated': {
-              if (me) {
-                fetchConversations(me.id);
-                if (curActiveConvId === msg.payload?.group?.id) {
-                  fetchMessages(curActiveConvId, me.id);
-                }
-              }
+            case 'chat:created': {
+              const newConv: Conversation = msg.payload.conversation;
+              setConversations((prev) => {
+                const exists = prev.some((c) => c.id === newConv.id);
+                if (exists) return prev;
+                return [newConv, ...prev];
+              });
               break;
             }
 
-            case 'group:left': {
-              if (me) {
-                fetchConversations(me.id);
-                if (curActiveConvId === msg.payload?.groupId) {
-                  setActiveConversationId(null);
-                }
-              }
-              break;
-            }
-
-            case 'message:new': {
-              const incoming: Message = msg.payload?.message;
-              if (!incoming || !me) break;
-
-              const isCurrentChat = curActiveConvId === incoming.conversationId;
+            case 'message:receive': {
+              const newMsg: Message = msg.payload.message;
+              const isCurrentChat = curActiveConvId === newMsg.conversationId;
 
               if (isCurrentChat) {
                 setCurrentMessages((prev) => {
-                  if (prev.some((m) => m.id === incoming.id)) return prev;
-
-                  if (incoming.senderId === me.id) {
-                    const tempIdx = prev.findIndex(
-                      (m) => m.id.startsWith('temp_') && m.senderId === incoming.senderId && (m.text === incoming.text || m.attachment?.name === incoming.attachment?.name)
-                    );
-                    if (tempIdx !== -1) {
-                      const next = [...prev];
-                      next[tempIdx] = incoming;
-                      return next;
-                    }
-                  }
-
-                  return [...prev, incoming];
+                  if (prev.some((m) => m.id === newMsg.id)) return prev;
+                  return [...prev, newMsg];
                 });
 
-                if (incoming.senderId !== me.id) {
-                  if (me.status !== 'dnd') {
-                    sounds.playIncomingMessage();
-                  }
-                  fetch(`/api/messages?conversationId=${incoming.conversationId}&userId=${me.id}`);
+                if (me && newMsg.senderId !== me.id) {
+                  fetch('/api/messages/read', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      conversationId: newMsg.conversationId,
+                      userId: me.id,
+                    }),
+                  }).catch(() => {});
                 }
-              } else {
-                if (incoming.senderId !== me.id && me.status !== 'dnd') {
+              }
+
+              if (me && newMsg.senderId !== me.id) {
+                if (me.status !== 'dnd') {
                   sounds.playIncomingMessage();
                 }
-              }
-
-              // Trigger push notification if not looking at chat
-              if (incoming.senderId !== me.id && me.status !== 'dnd' && incoming.senderId !== 'system') {
-                const isGroup = incoming.conversationId.startsWith('group_');
-                const senderName = incoming.sender?.name || '새 메시지';
-                const notifTitle = isGroup ? `[단체방] ${senderName}` : `${senderName} (@${incoming.sender?.username || ''})`;
-                const notifBody = incoming.text || (incoming.attachment ? `[파일] ${incoming.attachment.name}` : '새 메시지');
-
-                sendBrowserNotification(notifTitle, {
-                  body: notifBody,
-                  onClick: () => {
-                    setActiveConversationId(incoming.conversationId);
-                    setMobileView('chat');
-                    if (me) {
-                      fetchMessages(incoming.conversationId, me.id);
-                    }
-                  },
+                const senderName = allUsers.find((u) => u.id === newMsg.senderId)?.name || '새 메시지';
+                sendBrowserNotification(senderName, {
+                  body: newMsg.text || '새 메시지가 도착했습니다.',
                 });
               }
 
-              // Update conversation list item
-              setConversations((prev) => {
-                const exists = prev.some((c) => c.id === incoming.conversationId);
-                if (exists) {
-                  return prev
-                    .map((c) => {
-                      if (c.id === incoming.conversationId) {
-                        return {
-                          ...c,
-                          lastMessage: incoming,
-                          updatedAt: incoming.createdAt,
-                          unreadCount:
-                            isCurrentChat || incoming.senderId === me.id
-                              ? 0
-                              : c.unreadCount + 1,
-                        };
-                      }
-                      return c;
-                    })
-                    .sort((a, b) => b.updatedAt - a.updatedAt);
-                } else {
-                  if (me) fetchConversations(me.id);
-                  return prev;
-                }
-              });
+              if (me) fetchConversations(me.id);
+              break;
+            }
 
+            case 'message:reaction': {
+              const { messageId, reactions } = msg.payload;
+              setCurrentMessages((prev) =>
+                prev.map((m) => (m.id === messageId ? { ...m, reactions } : m))
+              );
               break;
             }
 
             case 'message:read': {
               const { conversationId, readerId } = msg.payload;
-              const me = currentUserRef.current;
-              if (me && readerId !== me.id) {
+              if (curActiveConvId === conversationId) {
                 setCurrentMessages((prev) =>
-                  prev.map((m) =>
-                    m.conversationId === conversationId && m.senderId === me.id
-                      ? { ...m, read: true }
-                      : m
-                  )
+                  prev.map((m) => {
+                    const existingReadBy = m.readBy || [];
+                    const updatedReadBy = existingReadBy.includes(readerId)
+                      ? existingReadBy
+                      : [...existingReadBy, readerId];
+                    return { ...m, read: true, readBy: updatedReadBy };
+                  })
                 );
               }
               break;
             }
 
-            case 'message:react': {
-              const { messageId, emoji, userId, action } = msg.payload;
-              setCurrentMessages((prev) =>
-                prev.map((m) => {
-                  if (m.id !== messageId) return m;
-                  const reactions = { ...(m.reactions || {}) };
-                  const userList = [...(reactions[emoji] || [])];
-                  if (action === 'add' && !userList.includes(userId)) {
-                    userList.push(userId);
-                    reactions[emoji] = userList;
-                  } else if (action === 'remove') {
-                    const filtered = userList.filter((u) => u !== userId);
-                    if (filtered.length > 0) {
-                      reactions[emoji] = filtered;
-                    } else {
-                      delete reactions[emoji];
-                    }
-                  }
-                  return { ...m, reactions };
-                })
-              );
-              break;
-            }
-
-            case 'typing:start': {
-              if (msg.payload?.senderId) {
-                setTypingUsers((prev) => new Set(prev).add(msg.payload.senderId));
-                if (partnerTypingTimerRef.current) clearTimeout(partnerTypingTimerRef.current);
-                partnerTypingTimerRef.current = setTimeout(() => {
+            case 'user:typing': {
+              const { userId, isTyping, conversationId } = msg.payload;
+              if (conversationId === curActiveConvId && userId !== me?.id) {
+                if (isTyping) {
+                  setTypingUsers((prev) => new Set([...prev, userId]));
+                  if (partnerTypingTimerRef.current) clearTimeout(partnerTypingTimerRef.current);
+                  partnerTypingTimerRef.current = setTimeout(() => {
+                    setTypingUsers((prev) => {
+                      const next = new Set(prev);
+                      next.delete(userId);
+                      return next;
+                    });
+                  }, 3000);
+                } else {
                   setTypingUsers((prev) => {
                     const next = new Set(prev);
-                    next.delete(msg.payload.senderId);
+                    next.delete(userId);
                     return next;
                   });
-                }, 2500);
+                }
               }
               break;
             }
 
-            case 'typing:stop': {
-              if (msg.payload?.senderId) {
-                setTypingUsers((prev) => {
-                  const next = new Set(prev);
-                  next.delete(msg.payload.senderId);
-                  return next;
-                });
-              }
+            default:
               break;
-            }
           }
-        } catch (e) {
-          console.error('WS message error:', e);
+        } catch (err) {
+          console.warn('WS message parse err:', err);
+        }
+      };
+
+      ws.onclose = () => {
+        if (pingInterval) clearInterval(pingInterval);
+        if (!isUnmounted) {
+          reconnectTimeout = setTimeout(connect, 3000);
         }
       };
 
       ws.onerror = () => {
         ws?.close();
-      };
-
-      ws.onclose = () => {
-        if (pingInterval) clearInterval(pingInterval);
-        if (!isUnmounted && currentUserRef.current) {
-          if (reconnectTimeout) clearTimeout(reconnectTimeout);
-          reconnectTimeout = setTimeout(() => {
-            connect();
-          }, 1500);
-        }
       };
     };
 
@@ -578,224 +554,78 @@ export default function App() {
       if (reconnectTimeout) clearTimeout(reconnectTimeout);
       if (ws) ws.close();
     };
-  }, [currentUserId, fetchConversations, fetchFriends, fetchPendingFriendRequests, fetchMessages]);
+  }, [currentUser?.id, fetchConversations, fetchFriends, fetchPendingFriendRequests, fetchAllUsers, fetchMessages]);
 
-  // Periodic gentle polling fallback
-  useEffect(() => {
-    if (!currentUser) return;
-
-    const interval = setInterval(() => {
-      if (document.visibilityState === 'visible' && currentUserRef.current) {
-        const uid = currentUserRef.current.id;
-        fetchConversations(uid);
-        fetchFriends(uid);
-        fetchPendingFriendRequests(uid);
-        fetchAllUsers(uid);
-        const activeConvId = activeConversationIdRef.current;
-        if (activeConvId) {
-          fetchMessages(activeConvId, uid);
-        }
-      }
-    }, 3500);
-
-    return () => clearInterval(interval);
-  }, [currentUser, fetchConversations, fetchFriends, fetchPendingFriendRequests, fetchAllUsers, fetchMessages]);
-
-  // Send message handler (1:1 or Group with attachment support)
-  const handleSendMessage = async (text: string, replyTo?: MessageReply, attachment?: MessageAttachment) => {
+  // Send message
+  const handleSendMessage = async (
+    text: string,
+    replyTo?: MessageReply,
+    attachment?: MessageAttachment
+  ) => {
     if (!currentUser || !activeConversationId) return;
 
     sounds.playSentMessage();
-
-    const tempId = `temp_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-    const isGroup = isGroupActive;
-    const receiverId = isGroup ? 'group' : (partnerUser?.id || '');
-
-    const optimisticMsg: Message = {
-      id: tempId,
-      conversationId: activeConversationId,
-      senderId: currentUser.id,
-      receiverId,
-      text: text.trim(),
-      createdAt: Date.now(),
-      read: false,
-      replyTo,
-      attachment,
-      sender: currentUser,
-    };
-
-    setCurrentMessages((prev) => [...prev, optimisticMsg]);
-
-    setConversations((prev) => {
-      const exists = prev.some((c) => c.id === activeConversationId);
-      if (exists) {
-        return prev
-          .map((c) => (c.id === activeConversationId ? { ...c, lastMessage: optimisticMsg, updatedAt: Date.now() } : c))
-          .sort((a, b) => b.updatedAt - a.updatedAt);
-      }
-      return prev;
-    });
 
     try {
       const res = await fetch('/api/messages/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          senderId: currentUser.id,
-          receiverId,
           conversationId: activeConversationId,
+          senderId: currentUser.id,
+          senderName: currentUser.name,
           text,
           replyTo,
           attachment,
         }),
       });
-      const data = await res.json();
-      if (!res.ok || data.notFriends || data.error) {
-        setCurrentMessages((prev) => prev.filter((m) => m.id !== tempId));
-        alert(data.error || '메시지 전송에 실패했습니다.');
-        return;
-      }
-      if (data.message) {
-        const realMsg: Message = data.message;
-        setCurrentMessages((prev) => {
-          const alreadyHasReal = prev.some((m) => m.id === realMsg.id);
-          if (alreadyHasReal) {
-            return prev.filter((m) => m.id !== tempId);
-          }
-          return prev.map((m) => (m.id === tempId ? realMsg : m));
-        });
 
-        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-          wsRef.current.send(
-            JSON.stringify({
-              type: 'typing:stop',
-              payload: {
-                senderId: currentUser.id,
-                receiverId,
-                conversationId: activeConversationId,
-              },
-            })
-          );
+      if (res.ok) {
+        const data = await res.json();
+        if (data.message) {
+          setCurrentMessages((prev) => {
+            if (prev.some((m) => m.id === data.message.id)) return prev;
+            return [...prev, data.message];
+          });
         }
+        fetchConversations(currentUser.id);
       }
     } catch (e) {
-      console.error('Send message failed:', e);
-      setCurrentMessages((prev) => prev.filter((m) => m.id !== tempId));
-      alert('네트워크 오류로 메시지 전송에 실패했습니다.');
+      console.error('Failed to send message:', e);
     }
   };
 
-  // React to message handler
+  // Add reaction
   const handleReactMessage = async (messageId: string, emoji: string) => {
-    if (!currentUser) return;
+    if (!currentUser || !activeConversationId) return;
+
     try {
       await fetch('/api/messages/react', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messageId,
+          userId: currentUser.id,
           emoji,
-          userId: currentUser.id,
         }),
       });
     } catch (e) {
-      console.error('Reaction failed:', e);
+      console.error('Failed to react:', e);
     }
   };
 
-  // Group invite member handler
-  const handleInviteGroupMembers = async (newMemberIds: string[]) => {
-    if (!currentUser || !activeConversationId) return;
-    const res = await fetch(`/api/groups/${activeConversationId}/invite`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userId: currentUser.id,
-        newMemberIds,
-      }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.error || '멤버 초대에 실패했습니다.');
-    }
-    fetchConversations(currentUser.id);
-    fetchMessages(activeConversationId, currentUser.id);
-  };
-
-  // Group leave handler
-  const handleLeaveGroup = async () => {
-    if (!currentUser || !activeConversationId) return;
-    const res = await fetch(`/api/groups/${activeConversationId}/leave`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userId: currentUser.id,
-      }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.error || '채팅방 나가기에 실패했습니다.');
-    }
-    setActiveConversationId(null);
-    fetchConversations(currentUser.id);
-  };
-
-  // Accept Friend Request
-  const handleAcceptFriendRequest = async (requestId: string) => {
-    if (!currentUser) return;
-    try {
-      const res = await fetch('/api/friends/respond', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          requestId,
-          userId: currentUser.id,
-          accept: true,
-        }),
-      });
-      if (res.ok) {
-        fetchFriends(currentUser.id);
-        fetchConversations(currentUser.id);
-        fetchPendingFriendRequests(currentUser.id);
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  // Reject Friend Request
-  const handleRejectFriendRequest = async (requestId: string) => {
-    if (!currentUser) return;
-    try {
-      const res = await fetch('/api/friends/respond', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          requestId,
-          userId: currentUser.id,
-          accept: false,
-        }),
-      });
-      if (res.ok) {
-        fetchPendingFriendRequests(currentUser.id);
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  // Typing event trigger
+  // Typing emitter
   const handleTyping = () => {
     if (!currentUser || !activeConversationId || !wsRef.current) return;
     if (wsRef.current.readyState !== WebSocket.OPEN) return;
 
     wsRef.current.send(
       JSON.stringify({
-        type: 'typing:start',
+        type: 'typing',
         payload: {
-          senderId: currentUser.id,
-          receiverId: isGroupActive ? 'group' : (partnerUser?.id || ''),
           conversationId: activeConversationId,
+          userId: currentUser.id,
+          isTyping: true,
         },
       })
     );
@@ -805,41 +635,54 @@ export default function App() {
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         wsRef.current.send(
           JSON.stringify({
-            type: 'typing:stop',
+            type: 'typing',
             payload: {
-              senderId: currentUser.id,
-              receiverId: isGroupActive ? 'group' : (partnerUser?.id || ''),
               conversationId: activeConversationId,
+              userId: currentUser.id,
+              isTyping: false,
             },
           })
         );
       }
-    }, 1500);
+    }, 2000);
   };
 
-  // Start chat with a friend
-  const handleStartChatWithUser = (targetUser: User) => {
-    if (!currentUser) return;
-    const sorted = [currentUser.id, targetUser.id].sort();
-    const convId = `conv_${sorted[0]}__${sorted[1]}`;
-
-    setCurrentMessages([]);
-
-    if (!conversations.some((c) => c.id === convId)) {
-      const newConv: Conversation = {
-        id: convId,
-        isGroup: false,
-        participantIds: [currentUser.id, targetUser.id],
-        otherUser: targetUser,
-        unreadCount: 0,
-        updatedAt: Date.now(),
-      };
-      setConversations((prev) => [newConv, ...prev]);
+  // Start chat with user
+  const handleStartChatWithUser = async (targetUser: User) => {
+    if (!currentUser) {
+      setSelectedExploreUser(targetUser);
+      return;
     }
 
-    setActiveConversationId(convId);
-    setMobileView('chat');
-    fetchMessages(convId, currentUser.id);
+    try {
+      const res = await fetch('/api/conversations/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userIds: [currentUser.id, targetUser.id],
+        }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        alert(errData.error || '대화방을 생성할 수 없습니다.');
+        return;
+      }
+
+      const data = await res.json();
+      const newConv: Conversation = data.conversation;
+
+      setConversations((prev) => {
+        const filtered = prev.filter((c) => c.id !== newConv.id);
+        return [newConv, ...filtered];
+      });
+
+      setActiveConversationId(newConv.id);
+      setMobileView('chat');
+      fetchMessages(newConv.id, currentUser.id);
+    } catch (e) {
+      console.error('Failed to create chat:', e);
+    }
   };
 
   const handleSelectConversation = (convId: string) => {
@@ -851,14 +694,80 @@ export default function App() {
     }
   };
 
-  if (!currentUser) {
-    return <AuthModal onLoginSuccess={handleLoginSuccess} />;
-  }
+  // Accept/Reject friend request
+  const handleAcceptFriendRequest = async (requestId: string) => {
+    if (!currentUser) return;
+    try {
+      await fetch('/api/friends/respond', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requestId, userId: currentUser.id, accept: true }),
+      });
+      fetchFriends(currentUser.id);
+      fetchPendingFriendRequests(currentUser.id);
+      fetchAllUsers(currentUser.id);
+    } catch (e) {
+      console.error('Failed to accept request:', e);
+    }
+  };
 
-  // Calculate typing text in group
+  const handleRejectFriendRequest = async (requestId: string) => {
+    if (!currentUser) return;
+    try {
+      await fetch('/api/friends/respond', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requestId, userId: currentUser.id, accept: false }),
+      });
+      fetchPendingFriendRequests(currentUser.id);
+    } catch (e) {
+      console.error('Failed to reject request:', e);
+    }
+  };
+
+  // Group actions
+  const handleInviteGroupMembers = async (newMemberIds: string[]) => {
+    if (!currentUser || !activeGroup) return;
+    try {
+      const res = await fetch(`/api/groups/${activeGroup.id}/invite`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: currentUser.id,
+          memberIds: newMemberIds,
+        }),
+      });
+      if (res.ok) {
+        fetchConversations(currentUser.id);
+        setShowGroupInfoModal(false);
+      }
+    } catch (e) {
+      console.error('Failed to invite:', e);
+    }
+  };
+
+  const handleLeaveGroup = async () => {
+    if (!currentUser || !activeGroup) return;
+    try {
+      const res = await fetch(`/api/groups/${activeGroup.id}/leave`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUser.id }),
+      });
+      if (res.ok) {
+        setShowGroupInfoModal(false);
+        setActiveConversationId(null);
+        fetchConversations(currentUser.id);
+      }
+    } catch (e) {
+      console.error('Failed to leave group:', e);
+    }
+  };
+
+  // Typing display in group
   const groupTypingNames = isGroupActive
     ? Array.from(typingUsers)
-        .filter((uid) => uid !== currentUser.id && activeGroup?.participantIds.includes(uid))
+        .filter((uid) => uid !== currentUser?.id && activeGroup?.participantIds.includes(uid))
         .map((uid) => allUsers.find((u) => u.id === uid)?.name || '멤버')
     : [];
 
@@ -875,18 +784,52 @@ export default function App() {
       ? 'online'
       : 'offline';
 
+  // 1. Full Page Centered Register View
+  if (appView === 'register') {
+    return (
+      <RegisterPage
+        onBack={() => setAppView('messenger')}
+        onRegisterSuccess={(user) => handleLoginSuccess(user, 'token', true)}
+      />
+    );
+  }
+
+  // 2. Main Messenger View (Sidebar on Left, Chat in Middle, Profile on Bottom Right)
   return (
-    <div className="relative flex h-[100dvh] w-full bg-[#0c0e14] text-slate-100 overflow-hidden font-sans select-none antialiased md:p-3 lg:p-5">
-      {/* Ambient Glowing Background Orbs */}
+    <div className="relative flex h-[100dvh] w-full bg-[#0a0d14] text-slate-100 overflow-hidden font-sans select-none antialiased md:p-3 lg:p-4">
+      
+      {/* Ambient Lighting Background */}
       <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
-        <div className="absolute top-[-10%] left-[-10%] w-[55%] h-[55%] bg-indigo-600/20 rounded-full blur-[130px]" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[55%] h-[55%] bg-blue-600/20 rounded-full blur-[130px]" />
-        <div className="absolute top-[40%] left-[30%] w-[35%] h-[35%] bg-purple-500/10 rounded-full blur-[110px]" />
+        <div className="absolute top-[-15%] left-[-10%] w-[50%] h-[50%] bg-blue-600/15 rounded-full blur-[140px]" />
+        <div className="absolute bottom-[-15%] right-[-10%] w-[50%] h-[50%] bg-purple-600/15 rounded-full blur-[140px]" />
+        <div className="absolute top-[40%] left-[30%] w-[30%] h-[30%] bg-indigo-500/10 rounded-full blur-[120px]" />
       </div>
 
-      {/* Main Glass App Frame */}
-      <div className="relative z-10 w-full h-full flex bg-white/5 backdrop-blur-2xl md:border md:border-white/10 md:rounded-3xl shadow-2xl overflow-hidden">
-        {/* Sidebar Component */}
+      {/* Broadcast Alert Toast */}
+      {broadcastAlert && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 max-w-lg w-full px-4 animate-in slide-in-from-top-4">
+          <div className="p-3.5 bg-amber-500/20 border border-amber-400/40 rounded-2xl shadow-2xl backdrop-blur-2xl text-amber-200 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <Radio className="w-5 h-5 text-amber-400 shrink-0 animate-pulse" />
+              <div className="text-xs">
+                <span className="font-bold text-amber-300 mr-1.5">[전체 공지]</span>
+                <span>{broadcastAlert}</span>
+              </div>
+            </div>
+            <button
+              onClick={() => setBroadcastAlert(null)}
+              className="p-1 text-amber-300/60 hover:text-amber-200 rounded-lg hover:bg-white/10"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Main Glass App Container */}
+      <div className="relative z-10 w-full h-full flex bg-[#0e121d]/85 backdrop-blur-3xl md:border md:border-white/15 md:rounded-3xl shadow-2xl overflow-hidden">
+        
+        {/* ================= LEFT SIDEBAR ================= */}
         <div
           className={`h-full w-full md:w-auto shrink-0 md:flex ${
             mobileView === 'sidebar' ? 'flex' : 'hidden md:flex'
@@ -896,35 +839,27 @@ export default function App() {
             currentUser={currentUser}
             conversations={conversations}
             friends={friends}
+            allUsers={allUsers}
             activeConversationId={activeConversationId}
             onlineUserIds={onlineUserIds}
             userStatuses={userStatuses}
-            soundEnabled={soundEnabled}
-            notificationPermission={notificationPermission}
             pendingFriendRequestsCount={pendingFriendRequestsCount}
-            onToggleSound={() => {
-              const next = sounds.toggleSound();
-              setSoundEnabled(next);
-            }}
-            onOpenNotificationPrompt={() => setShowNotificationPrompt(true)}
-            onOpenStatusPicker={() => setShowStatusPicker(true)}
             onOpenAddFriendModal={() => setShowAddFriendModal(true)}
             onOpenCreateGroupModal={() => setShowCreateGroupModal(true)}
             onSelectConversation={handleSelectConversation}
             onStartChatWithUser={handleStartChatWithUser}
-            onOpenNewChatModal={() => setShowAddFriendModal(true)}
-            onOpenProfileModal={() => setShowProfileModal(true)}
-            onLogout={handleLogout}
+            onOpenUserDetail={(u) => setSelectedExploreUser(u)}
+            onPromptLogin={() => {}}
           />
         </div>
 
-        {/* Chat Area Component */}
+        {/* ================= MAIN CHAT / CONTENT AREA ================= */}
         <div
-          className={`h-full flex-1 flex flex-col min-w-0 bg-white/[0.02] ${
+          className={`h-full flex-1 flex flex-col min-w-0 bg-white/[0.01] ${
             mobileView === 'chat' ? 'flex' : 'hidden md:flex'
           }`}
         >
-          {activeConversationId && (isGroupActive || partnerUser) ? (
+          {activeConversationId && (isGroupActive || partnerUser) && currentUser ? (
             <div className="h-full flex flex-col min-w-0">
               <ChatArea
                 currentUser={currentUser}
@@ -946,43 +881,87 @@ export default function App() {
                 onBack={() => setMobileView('sidebar')}
               />
             </div>
-          ) : (
-            /* Empty Chat State */
-            <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-slate-400 bg-black/10">
-              <div className="w-20 h-20 rounded-3xl bg-white/5 border border-white/10 flex items-center justify-center text-indigo-400 mb-5 shadow-2xl backdrop-blur-xl">
-                <MessageSquare className="w-9 h-9" />
+          ) : currentUser ? (
+            /* Logged In Empty Chat View */
+            <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-white/50 bg-black/10">
+              <div className="w-16 h-16 rounded-3xl bg-white/5 border border-white/10 flex items-center justify-center text-blue-400 mb-4 shadow-2xl backdrop-blur-xl">
+                <MessageSquare className="w-8 h-8" />
               </div>
-              <h2 className="text-xl font-bold text-white mb-2">대화를 시작해보세요</h2>
-              <p className="text-sm text-white/50 max-w-sm mb-6 leading-relaxed">
-                친구와의 1:1 대화 또는 친구들을 한곳에 모아 단체 채팅방을 개설할 수 있습니다.
+              <h2 className="text-xl font-bold text-white mb-1.5">대화를 선택하거나 시작해보세요</h2>
+              <p className="text-xs text-white/50 max-w-sm mb-5 leading-relaxed">
+                왼쪽 목록에서 대화방을 선택하거나, 친구 추가 및 단체방을 개설하여 대화를 나눠보세요.
               </p>
-              <div className="flex flex-wrap items-center justify-center gap-3">
+              <div className="flex flex-wrap items-center justify-center gap-2.5">
                 <button
-                  id="empty-state-new-friend-btn"
+                  id="empty-chat-add-friend-btn"
                   type="button"
                   onClick={() => setShowAddFriendModal(true)}
-                  className="py-2.5 px-5 bg-white/10 hover:bg-white/15 text-white font-semibold rounded-2xl text-xs border border-white/15 transition-all flex items-center gap-2"
+                  className="py-2 px-4 bg-white/10 hover:bg-white/15 text-white font-medium rounded-xl text-xs border border-white/15 transition-all flex items-center gap-1.5"
                 >
-                  <UserPlus className="w-4 h-4 text-indigo-400" />
+                  <UserPlus className="w-3.5 h-3.5 text-blue-400" />
                   <span>친구 추가하기</span>
                 </button>
                 <button
-                  id="empty-state-create-group-btn"
+                  id="empty-chat-create-group-btn"
                   type="button"
                   onClick={() => setShowCreateGroupModal(true)}
-                  className="py-2.5 px-5 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white font-semibold rounded-2xl text-xs shadow-lg shadow-indigo-600/30 border border-indigo-400/30 transition-all flex items-center gap-2"
+                  className="py-2 px-4 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-xl text-xs shadow-md shadow-blue-600/30 border border-blue-400/30 transition-all flex items-center gap-1.5"
                 >
-                  <Users className="w-4 h-4" />
+                  <Users className="w-3.5 h-3.5" />
                   <span>단체 채팅방 만들기</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* Guest Explorer Home View */
+            <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-white/60 bg-black/15">
+              <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-blue-600/20 to-purple-600/20 border border-white/15 flex items-center justify-center text-4xl mb-5 shadow-2xl backdrop-blur-xl">
+                ⚡
+              </div>
+              <h2 className="text-2xl font-bold text-white mb-2">
+                실시간 JK Message 메신저
+              </h2>
+              <p className="text-xs sm:text-sm text-white/50 max-w-md mb-6 leading-relaxed">
+                로그인하지 않아도 왼쪽 사이드바에서 전체 가입 유저를 검색하고 프로필을 조회할 수 있습니다.
+                실시간 대화와 그룹 채팅을 이용하시려면 간편 로그인 또는 회원가입을 진행해주세요.
+              </p>
+
+              <div className="flex flex-wrap items-center justify-center gap-3">
+                <button
+                  id="guest-main-register-btn"
+                  type="button"
+                  onClick={() => setAppView('register')}
+                  className="py-2.5 px-5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold rounded-2xl text-xs shadow-lg shadow-blue-600/30 border border-blue-400/30 transition-all flex items-center gap-2"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  <span>새 계정 만들기 (회원가입)</span>
                 </button>
               </div>
             </div>
           )}
         </div>
+
       </div>
 
+      {/* ================= BOTTOM RIGHT PROFILE WIDGET ================= */}
+      <BottomRightProfile
+        currentUser={currentUser}
+        soundEnabled={soundEnabled}
+        onToggleSound={() => {
+          const next = sounds.toggleSound();
+          setSoundEnabled(next);
+        }}
+        onOpenProfileSettings={() => setShowProfileModal(true)}
+        onOpenStatusPicker={() => setShowStatusPicker(true)}
+        onLogout={handleLogout}
+        onNavigateToRegister={() => setAppView('register')}
+        onLoginSuccess={(user) => handleLoginSuccess(user, 'token', false)}
+      />
+
+      {/* ================= MODALS ================= */}
+      
       {/* Create Group Modal */}
-      {showCreateGroupModal && (
+      {showCreateGroupModal && currentUser && (
         <CreateGroupModal
           currentUser={currentUser}
           friends={friends}
@@ -997,7 +976,7 @@ export default function App() {
       )}
 
       {/* Group Info & Members Modal */}
-      {showGroupInfoModal && activeGroup && (
+      {showGroupInfoModal && activeGroup && currentUser && (
         <GroupInfoModal
           group={activeGroup}
           currentUser={currentUser}
@@ -1011,7 +990,7 @@ export default function App() {
       )}
 
       {/* Add Friend & Requests Modal */}
-      {showAddFriendModal && (
+      {showAddFriendModal && currentUser && (
         <AddFriendModal
           currentUser={currentUser}
           onClose={() => setShowAddFriendModal(false)}
@@ -1025,7 +1004,7 @@ export default function App() {
       )}
 
       {/* Status Picker Modal */}
-      {showStatusPicker && (
+      {showStatusPicker && currentUser && (
         <StatusPickerModal
           user={currentUser}
           onClose={() => setShowStatusPicker(false)}
@@ -1036,17 +1015,8 @@ export default function App() {
         />
       )}
 
-      {/* New Chat Modal (fallback) */}
-      {showNewChatModal && (
-        <NewChatModal
-          currentUserId={currentUser.id}
-          onClose={() => setShowNewChatModal(false)}
-          onSelectUser={handleStartChatWithUser}
-        />
-      )}
-
       {/* Profile Settings Modal */}
-      {showProfileModal && (
+      {showProfileModal && currentUser && (
         <ProfileModal
           user={currentUser}
           onClose={() => setShowProfileModal(false)}
@@ -1066,6 +1036,20 @@ export default function App() {
           user={partnerUser}
           isOnline={isPartnerConnected}
           onClose={() => setShowPartnerDetailModal(false)}
+          onStartChat={currentUser ? (u) => handleStartChatWithUser(u) : undefined}
+        />
+      )}
+
+      {/* Selected Explore User Details Modal (for Guest or Explorers) */}
+      {selectedExploreUser && (
+        <UserDetailModal
+          user={selectedExploreUser}
+          isOnline={onlineUserIds.has(selectedExploreUser.id)}
+          onClose={() => setSelectedExploreUser(null)}
+          onStartChat={currentUser ? (u) => {
+            setSelectedExploreUser(null);
+            handleStartChatWithUser(u);
+          } : undefined}
         />
       )}
 

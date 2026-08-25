@@ -5,71 +5,63 @@ import {
   Users,
   Search,
   Plus,
-  Volume2,
-  VolumeX,
-  Settings,
-  LogOut,
   UserPlus,
   Sparkles,
-  Check,
+  Shield,
   Clock,
-  Radio,
-  Bell,
-  BellRing,
-  UserCheck,
+  Terminal,
+  Info,
+  LogIn,
+  CheckCheck,
 } from 'lucide-react';
 
 interface SidebarProps {
-  currentUser: User;
+  currentUser: User | null;
   conversations: Conversation[];
   friends: User[];
+  allUsers?: User[];
   activeConversationId: string | null;
   onlineUserIds: Set<string>;
   userStatuses: Record<string, { status: UserStatusMode; dndUntil?: number | null }>;
-  soundEnabled: boolean;
-  notificationPermission: NotificationPermission | 'unsupported';
-  pendingFriendRequestsCount: number;
-  onToggleSound: () => void;
-  onOpenNotificationPrompt: () => void;
-  onOpenStatusPicker: () => void;
-  onOpenAddFriendModal: () => void;
-  onOpenCreateGroupModal: () => void;
+  pendingFriendRequestsCount?: number;
+  onOpenAddFriendModal?: () => void;
+  onOpenCreateGroupModal?: () => void;
   onSelectConversation: (conversationId: string) => void;
   onStartChatWithUser: (user: User) => void;
-  onOpenNewChatModal: () => void;
-  onOpenProfileModal: () => void;
-  onLogout: () => void;
+  onOpenUserDetail?: (user: User) => void;
+  onPromptLogin?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
   currentUser,
   conversations,
   friends,
+  allUsers = [],
   activeConversationId,
   onlineUserIds,
   userStatuses,
-  soundEnabled,
-  notificationPermission,
-  pendingFriendRequestsCount,
-  onToggleSound,
-  onOpenNotificationPrompt,
-  onOpenStatusPicker,
+  pendingFriendRequestsCount = 0,
   onOpenAddFriendModal,
   onOpenCreateGroupModal,
   onSelectConversation,
   onStartChatWithUser,
-  onOpenNewChatModal,
-  onOpenProfileModal,
-  onLogout,
+  onOpenUserDetail,
+  onPromptLogin,
 }) => {
-  const [tab, setTab] = useState<'chats' | 'friends'>('chats');
+  const [tab, setTab] = useState<'chats' | 'friends' | 'explore'>('chats');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Filter conversations (1:1 + Groups)
+  const isGuest = !currentUser;
+
+  // Filter conversations
   const filteredConversations = conversations.filter((c) => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
-    
+
+    if (c.isCommandBot) {
+      return '명령어'.includes(q) || 'command'.includes(q) || '터미널'.includes(q);
+    }
+
     if (c.isGroup && c.group) {
       return (
         c.group.name.toLowerCase().includes(q) ||
@@ -86,8 +78,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
     );
   });
 
-  // Filter friends
+  // Filter friends (if logged in)
   const filteredFriends = friends.filter((u) => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      u.username.toLowerCase().includes(q) ||
+      u.name.toLowerCase().includes(q) ||
+      (u.customStatus && u.customStatus.toLowerCase().includes(q))
+    );
+  });
+
+  // Filter all users (for guest search / explore)
+  const filteredAllUsers = allUsers.filter((u) => {
+    if (currentUser && u.id === currentUser.id) return false;
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
     return (
@@ -133,7 +137,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     const rawStatus = statusData?.status || defaultStatus || 'offline';
     const isOnlineSocket = onlineUserIds.has(userId);
 
-    // If DND
     if (rawStatus === 'dnd') {
       return {
         mode: 'dnd' as const,
@@ -143,7 +146,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       };
     }
 
-    // If online or socket connected
     if (isOnlineSocket || rawStatus === 'online') {
       return {
         mode: 'online' as const,
@@ -153,7 +155,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       };
     }
 
-    // Offline (Gray)
     return {
       mode: 'offline' as const,
       label: '오프라인',
@@ -162,460 +163,438 @@ export const Sidebar: React.FC<SidebarProps> = ({
     };
   };
 
-  const currentStatusInfo = getUserStatusInfo(currentUser.id, currentUser.status);
   const totalUnread = conversations.reduce((acc, c) => acc + (c.unreadCount || 0), 0);
 
   return (
-    <aside className="w-full md:w-80 lg:w-96 h-full flex flex-col bg-black/20 backdrop-blur-xl border-r border-white/10 shrink-0 select-none">
+    <aside className="w-full md:w-80 lg:w-96 h-full flex flex-col bg-[#0d111a]/95 backdrop-blur-2xl border-r border-white/10 shrink-0 select-none z-20">
       
-      {/* Current User Header */}
+      {/* Top Brand Header */}
       <div className="p-4 sm:p-5 border-b border-white/10 bg-white/[0.02] flex items-center justify-between">
-        
-        {/* Profile + Status Click */}
-        <div className="flex items-center gap-3 min-w-0">
-          
-          <div
-            onClick={onOpenProfileModal}
-            className="relative shrink-0 cursor-pointer group"
-            title="프로필 사진 및 정보 수정"
-          >
-            <div className={`w-11 h-11 rounded-2xl bg-gradient-to-tr ${currentUser.avatarBg || 'from-indigo-500 to-blue-600'} border border-white/15 flex items-center justify-center text-xl shadow-lg group-hover:scale-105 transition-transform`}>
-              {currentUser.avatarEmoji || '💬'}
-            </div>
-            {/* Status dot on avatar */}
-            <span
-              className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 border-2 border-[#0c0e14] rounded-full ${currentStatusInfo.dotClass}`}
-            />
+        <div className="flex items-center gap-2.5">
+          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 border border-white/20 flex items-center justify-center text-xl shadow-lg shadow-blue-500/20">
+            ⚡
           </div>
-
-          <div className="min-w-0">
+          <div>
             <div className="flex items-center gap-1.5">
-              <span
-                onClick={onOpenProfileModal}
-                className="font-semibold text-sm text-white truncate cursor-pointer hover:text-indigo-300 transition-colors"
+              <span className="font-bold text-base text-white tracking-tight">JK Message</span>
+              {isGuest ? (
+                <span className="text-[10px] px-1.5 py-0.2 bg-white/10 text-white/70 rounded-md border border-white/10">
+                  게스트 모드
+                </span>
+              ) : (
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              )}
+            </div>
+            <p className="text-[11px] text-white/50">
+              {isGuest ? '유저 탐색 및 프로필 조회 가능' : '실시간 메신저'}
+            </p>
+          </div>
+        </div>
+
+        {/* Action icons for logged in users */}
+        {!isGuest && (
+          <div className="flex items-center gap-1">
+            {onOpenCreateGroupModal && (
+              <button
+                id="sidebar-create-group-btn"
+                type="button"
+                onClick={onOpenCreateGroupModal}
+                className="p-2 rounded-xl text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+                title="새 단체방 만들기"
               >
-                {currentUser.name}
-              </span>
-            </div>
-            
-            {/* Interactive Status Pill */}
-            <button
-              id="my-status-pill-btn"
-              type="button"
-              onClick={onOpenStatusPicker}
-              className={`mt-0.5 px-2 py-0.5 rounded-md text-[11px] font-medium border flex items-center gap-1.5 transition-all hover:opacity-90 ${currentStatusInfo.badgeClass}`}
-              title="내 접속 상태 변경 (온라인, 방해 금지)"
-            >
-              <span className={`w-1.5 h-1.5 rounded-full ${currentStatusInfo.dotClass.split(' ')[0]}`} />
-              <span>{currentStatusInfo.label}</span>
-              <span className="text-[9px] text-white/40">▼</span>
-            </button>
+                <Plus className="w-4 h-4" />
+              </button>
+            )}
+
+            {onOpenAddFriendModal && (
+              <button
+                id="sidebar-add-friend-btn"
+                type="button"
+                onClick={onOpenAddFriendModal}
+                className="relative p-2 rounded-xl text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+                title="친구 추가 및 요청 목록"
+              >
+                <UserPlus className="w-4 h-4 text-blue-400" />
+                {pendingFriendRequestsCount > 0 && (
+                  <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-rose-500 rounded-full border border-black" />
+                )}
+              </button>
+            )}
           </div>
-
-        </div>
-
-        {/* Header Action Buttons */}
-        <div className="flex items-center gap-0.5 sm:gap-1">
-          
-          {/* Add friend button */}
-          <button
-            id="open-add-friend-btn"
-            type="button"
-            onClick={onOpenAddFriendModal}
-            className="relative p-2 rounded-xl text-white/70 hover:text-white hover:bg-white/10 transition-colors"
-            title="친구 추가 및 요청 관리"
-          >
-            <UserPlus className="w-4 h-4 text-indigo-400" />
-            {pendingFriendRequestsCount > 0 && (
-              <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-rose-500 rounded-full border border-black" />
-            )}
-          </button>
-
-          {/* Notification prompt */}
-          <button
-            id="toggle-notification-btn"
-            type="button"
-            onClick={onOpenNotificationPrompt}
-            className={`p-2 rounded-xl transition-colors ${
-              notificationPermission === 'granted'
-                ? 'text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10'
-                : 'text-white/40 hover:text-white hover:bg-white/10'
-            }`}
-            title={
-              notificationPermission === 'granted'
-                ? '푸시 알림 켜짐'
-                : '푸시 알림 설정하기'
-            }
-          >
-            {notificationPermission === 'granted' ? (
-              <BellRing className="w-4 h-4 text-indigo-400" />
-            ) : (
-              <Bell className="w-4 h-4" />
-            )}
-          </button>
-
-          {/* Sound toggle */}
-          <button
-            id="toggle-sound-btn"
-            type="button"
-            onClick={onToggleSound}
-            className={`p-2 rounded-xl text-white/60 hover:text-white hover:bg-white/10 transition-colors ${
-              soundEnabled ? 'text-indigo-400' : 'text-white/30'
-            }`}
-            title={soundEnabled ? '알림음 켜짐' : '알림음 음소거'}
-          >
-            {soundEnabled ? <Volume2 className="w-4 h-4 text-indigo-400" /> : <VolumeX className="w-4 h-4" />}
-          </button>
-
-          {/* Settings */}
-          <button
-            id="open-settings-btn"
-            type="button"
-            onClick={onOpenProfileModal}
-            className="p-2 rounded-xl text-white/60 hover:text-white hover:bg-white/10 transition-colors"
-            title="설정"
-          >
-            <Settings className="w-4 h-4" />
-          </button>
-        </div>
+        )}
       </div>
 
-      {/* Action / Add Friend, Group Chat & New Chat Bar */}
-      <div className="p-3.5 pb-2 grid grid-cols-3 gap-1.5 sm:gap-2">
-        <button
-          id="sidebar-add-friend-action-btn"
-          type="button"
-          onClick={onOpenAddFriendModal}
-          className="py-2 px-2 bg-white/10 hover:bg-white/15 active:scale-[0.99] text-white font-semibold rounded-2xl text-[11px] sm:text-xs border border-white/15 flex items-center justify-center gap-1 transition-all shadow-sm truncate"
-          title="친구 추가"
-        >
-          <UserPlus className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-          <span className="truncate">친구 추가</span>
-          {pendingFriendRequestsCount > 0 && (
-            <span className="px-1 py-0.2 bg-rose-500 text-white rounded-full text-[9px] font-bold">
-              {pendingFriendRequestsCount}
-            </span>
-          )}
-        </button>
-
-        <button
-          id="sidebar-create-group-btn"
-          type="button"
-          onClick={onOpenCreateGroupModal}
-          className="py-2 px-2 bg-indigo-600/20 hover:bg-indigo-600/30 active:scale-[0.99] text-indigo-200 font-semibold rounded-2xl text-[11px] sm:text-xs border border-indigo-500/30 flex items-center justify-center gap-1 transition-all shadow-sm truncate"
-          title="단체 채팅방 개설"
-        >
-          <Users className="w-3.5 h-3.5 text-indigo-300 shrink-0" />
-          <span className="truncate">단체방</span>
-        </button>
-
-        <button
-          id="new-chat-btn"
-          type="button"
-          onClick={onOpenNewChatModal}
-          className="py-2 px-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 active:scale-[0.99] text-white font-semibold rounded-2xl text-[11px] sm:text-xs shadow-lg shadow-indigo-600/25 border border-indigo-400/30 flex items-center justify-center gap-1 transition-all truncate"
-          title="새 1:1 대화 시작"
-        >
-          <Plus className="w-3.5 h-3.5 stroke-[2.5] shrink-0" />
-          <span className="truncate">새 대화</span>
-        </button>
-      </div>
-
-      {/* Incoming Friend Request Alert Banner */}
-      {pendingFriendRequestsCount > 0 && (
-        <div className="px-3.5 pb-1">
-          <div
-            id="pending-requests-banner"
-            onClick={onOpenAddFriendModal}
-            className="p-2.5 bg-gradient-to-r from-indigo-600/30 to-blue-600/30 border border-indigo-400/40 rounded-2xl flex items-center justify-between cursor-pointer hover:bg-indigo-500/20 transition-all shadow-md group"
-          >
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping shrink-0" />
-              <span className="text-xs text-white font-medium truncate">
-                새로운 친구 요청 <strong className="text-indigo-300">{pendingFriendRequestsCount}건</strong>
-              </span>
-            </div>
-            <span className="text-[11px] px-2 py-0.5 bg-indigo-500 text-white rounded-lg font-bold shrink-0 group-hover:bg-indigo-400 transition-colors">
-              확인
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* Tabs: 대화 vs 친구 */}
-      <div className="px-3.5 pt-1">
-        <div className="grid grid-cols-2 p-1 bg-black/30 rounded-2xl border border-white/10">
-          <button
-            id="tab-chats-btn"
-            type="button"
-            onClick={() => setTab('chats')}
-            className={`py-2 text-xs font-semibold rounded-xl transition-all flex items-center justify-center gap-1.5 ${
-              tab === 'chats'
-                ? 'bg-white/15 text-white border border-white/10 shadow-sm'
-                : 'text-white/50 hover:text-white/80'
-            }`}
-          >
-            <MessageSquare className="w-3.5 h-3.5" />
-            <span>대화</span>
-            {totalUnread > 0 && (
-              <span className="px-1.5 py-0.2 bg-rose-500/90 text-white rounded-full text-[10px] font-bold border border-rose-400/30">
-                {totalUnread}
-              </span>
-            )}
-          </button>
-
-          <button
-            id="tab-friends-btn"
-            type="button"
-            onClick={() => setTab('friends')}
-            className={`py-2 text-xs font-semibold rounded-xl transition-all flex items-center justify-center gap-1.5 ${
-              tab === 'friends'
-                ? 'bg-white/15 text-white border border-white/10 shadow-sm'
-                : 'text-white/50 hover:text-white/80'
-            }`}
-          >
-            <Users className="w-3.5 h-3.5" />
-            <span>친구 ({friends.length})</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Search Input */}
-      <div className="p-3.5 pb-2">
+      {/* Search Bar */}
+      <div className="p-3 border-b border-white/10">
         <div className="relative">
-          <Search className="w-4 h-4 text-white/30 absolute left-3.5 top-1/2 -translate-y-1/2" />
+          <Search className="w-4 h-4 text-white/40 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             id="sidebar-search-input"
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={tab === 'chats' ? '단체방, 친구, 대화 검색...' : '등록된 친구 검색...'}
-            className="w-full pl-9 pr-4 py-2 bg-white/5 border border-white/10 rounded-xl text-white placeholder-white/30 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500/50 transition-all"
+            placeholder={isGuest ? "유저 아이디 또는 닉네임 검색..." : "대화, 친구, 메시지 검색..."}
+            className="w-full pl-9 pr-4 py-2 bg-black/40 border border-white/10 rounded-xl text-xs text-white placeholder-white/40 focus:outline-none focus:border-blue-500/50 transition-colors"
           />
         </div>
       </div>
 
-      {/* List Container */}
-      <div className="flex-1 overflow-y-auto px-2.5 py-1 space-y-1.5 min-h-0">
-        {tab === 'chats' ? (
-          filteredConversations.length > 0 ? (
-            filteredConversations.map((c) => {
-              const isSelected = activeConversationId === c.id;
+      {/* Navigation Tabs */}
+      <div className="px-3 pt-3 pb-1">
+        <div className="grid grid-cols-2 p-1 bg-black/30 rounded-xl border border-white/10 text-xs">
+          
+          {/* Tab 1 */}
+          <button
+            id="sidebar-tab-chats"
+            type="button"
+            onClick={() => setTab('chats')}
+            className={`py-1.5 px-3 rounded-lg font-medium transition-all flex items-center justify-center gap-1.5 ${
+              tab === 'chats'
+                ? 'bg-blue-600 text-white shadow-md'
+                : 'text-white/60 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <MessageSquare className="w-3.5 h-3.5" />
+            <span>대화</span>
+            {!isGuest && totalUnread > 0 && (
+              <span className="px-1.5 py-0.2 text-[10px] font-bold bg-rose-500 text-white rounded-full">
+                {totalUnread}
+              </span>
+            )}
+          </button>
 
-              if (c.isGroup && c.group) {
-                // Group Chat item
-                return (
+          {/* Tab 2 */}
+          <button
+            id="sidebar-tab-friends-users"
+            type="button"
+            onClick={() => setTab(isGuest ? 'explore' : 'friends')}
+            className={`py-1.5 px-3 rounded-lg font-medium transition-all flex items-center justify-center gap-1.5 ${
+              tab === (isGuest ? 'explore' : 'friends')
+                ? 'bg-blue-600 text-white shadow-md'
+                : 'text-white/60 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <Users className="w-3.5 h-3.5" />
+            <span>{isGuest ? '유저 탐색' : '친구'}</span>
+            {!isGuest && friends.length > 0 && (
+              <span className="text-[10px] opacity-70">({friends.length})</span>
+            )}
+          </button>
+
+        </div>
+      </div>
+
+      {/* Tab Content List */}
+      <div className="flex-1 overflow-y-auto p-2 space-y-1">
+        
+        {/* ===================== CHATS TAB ===================== */}
+        {tab === 'chats' && (
+          <>
+            {isGuest ? (
+              /* Guest Empty State for Chats */
+              <div className="h-full flex flex-col items-center justify-center p-6 text-center text-white/60 space-y-3">
+                <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-2xl">
+                  💬
+                </div>
+                <div className="space-y-1">
+                  <h4 className="text-sm font-semibold text-white">대화 목록</h4>
+                  <p className="text-xs text-white/50 leading-relaxed">
+                    로그인하시면 친구들과 나눈 실시간 대화가 여기에 표시됩니다.
+                  </p>
+                </div>
+                <div className="pt-2">
                   <button
-                    key={c.id}
-                    id={`conversation-group-${c.group.id}`}
+                    id="guest-prompt-login-btn"
                     type="button"
-                    onClick={() => onSelectConversation(c.id)}
-                    className={`w-full p-3 rounded-2xl flex items-center gap-3 text-left transition-all relative ${
-                      isSelected
-                        ? 'bg-white/10 border border-white/15 text-white shadow-sm backdrop-blur-md'
-                        : 'hover:bg-white/5 text-white/80 border border-transparent hover:border-white/5'
-                    }`}
+                    onClick={() => {
+                      if (onPromptLogin) onPromptLogin();
+                      setTab('explore');
+                    }}
+                    className="px-3.5 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-400/30 rounded-xl text-xs font-medium transition-colors"
                   >
-                    {/* Group Avatar */}
-                    <div className="relative shrink-0">
-                      <div className={`w-11 h-11 rounded-2xl bg-gradient-to-tr ${c.group.avatarBg || 'from-amber-500 to-rose-600'} border border-white/15 flex items-center justify-center text-xl shadow-md`}>
-                        {c.group.avatarEmoji || '👥'}
-                      </div>
-                      <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-indigo-500 border-2 border-[#0c0e14] flex items-center justify-center text-[9px] text-white font-bold">
-                        {c.group.participantIds.length}
-                      </span>
-                    </div>
+                    유저 목록 둘러보기 👉
+                  </button>
+                </div>
+              </div>
+            ) : filteredConversations.length === 0 ? (
+              <div className="h-48 flex flex-col items-center justify-center p-4 text-center text-white/50">
+                <p className="text-xs">진행 중인 대화가 없습니다.</p>
+                <button
+                  id="empty-chat-to-friends-btn"
+                  type="button"
+                  onClick={() => setTab('friends')}
+                  className="mt-2 text-xs text-blue-400 hover:underline"
+                >
+                  친구 목록에서 대화 시작하기
+                </button>
+              </div>
+            ) : (
+              filteredConversations.map((conv) => {
+                const isActive = activeConversationId === conv.id;
 
-                    {/* Group Info */}
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-1 mb-0.5">
-                        <div className="flex items-center gap-1.5 truncate">
-                          <span className="font-semibold text-sm text-white truncate">
-                            {c.group.name}
+                // SPECIAL: Command Bot Conversation (Admin Only)
+                if (conv.isCommandBot) {
+                  return (
+                    <button
+                      key={conv.id}
+                      id={`conv-command-bot-btn`}
+                      type="button"
+                      onClick={() => onSelectConversation(conv.id)}
+                      className={`w-full p-2.5 rounded-2xl flex items-center gap-3 text-left transition-all border ${
+                        isActive
+                          ? 'bg-gradient-to-r from-amber-500/20 to-red-500/20 border-amber-500/40 shadow-lg shadow-amber-500/10'
+                          : 'bg-amber-500/5 hover:bg-amber-500/10 border-amber-500/20'
+                      }`}
+                    >
+                      <div className="relative shrink-0">
+                        <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-amber-500 to-red-600 border border-amber-400/40 flex items-center justify-center text-xl shadow-md">
+                          ⚡
+                        </div>
+                        <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-400 border-2 border-[#0d111a]" />
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="font-bold text-xs sm:text-sm text-amber-300 truncate flex items-center gap-1">
+                            <Terminal className="w-3.5 h-3.5" />
+                            <span>명령어 터미널</span>
                           </span>
-                          <span className="text-[10px] bg-indigo-500/20 text-indigo-300 px-1 py-0.2 rounded border border-indigo-400/20 shrink-0">
-                            단체
+                          <span className="px-1.5 py-0.2 text-[9px] font-bold bg-amber-500/30 text-amber-200 border border-amber-400/30 rounded">
+                            ADMIN
                           </span>
                         </div>
-                        <span className="text-[10px] text-white/40 shrink-0 font-mono">
-                          {formatTime(c.lastMessage?.createdAt || c.updatedAt)}
+                        <p className="text-xs text-amber-200/60 truncate mt-0.5 font-mono">
+                          {conv.lastMessage?.text || '/help 입력하여 제어 콘솔 열기'}
+                        </p>
+                      </div>
+                    </button>
+                  );
+                }
+
+                // Group conversation
+                if (conv.isGroup && conv.group) {
+                  return (
+                    <button
+                      key={conv.id}
+                      id={`conv-group-${conv.id}`}
+                      type="button"
+                      onClick={() => onSelectConversation(conv.id)}
+                      className={`w-full p-2.5 rounded-2xl flex items-center gap-3 text-left transition-all border ${
+                        isActive
+                          ? 'bg-blue-600/20 border-blue-500/40 shadow-md'
+                          : 'hover:bg-white/5 border-transparent'
+                      }`}
+                    >
+                      <div className="relative shrink-0">
+                        <div className={`w-11 h-11 rounded-2xl bg-gradient-to-tr ${conv.group.avatarBg || 'from-indigo-600 to-purple-600'} border border-white/15 flex items-center justify-center text-xl shadow-md`}>
+                          {conv.group.avatarEmoji || '🏢'}
+                        </div>
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="font-bold text-xs sm:text-sm text-white truncate">
+                            {conv.group.name}
+                          </span>
+                          <span className="text-[10px] text-white/40 shrink-0">
+                            {formatTime(conv.updatedAt)}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-1 mt-0.5">
+                          <p className="text-xs text-white/60 truncate">
+                            {conv.lastMessage?.text || '대화를 시작해보세요'}
+                          </p>
+                          {conv.unreadCount > 0 && (
+                            <span className="px-1.5 py-0.2 text-[10px] font-bold bg-blue-600 text-white rounded-full shrink-0">
+                              {conv.unreadCount}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                }
+
+                // 1:1 Direct Conversation
+                const other = conv.otherUser;
+                if (!other) return null;
+                const statusInfo = getUserStatusInfo(other.id, other.status);
+
+                return (
+                  <button
+                    key={conv.id}
+                    id={`conv-direct-${conv.id}`}
+                    type="button"
+                    onClick={() => onSelectConversation(conv.id)}
+                    className={`w-full p-2.5 rounded-2xl flex items-center gap-3 text-left transition-all border ${
+                      isActive
+                        ? 'bg-blue-600/20 border-blue-500/40 shadow-md'
+                        : 'hover:bg-white/5 border-transparent'
+                    }`}
+                  >
+                    <div className="relative shrink-0">
+                      <div className={`w-11 h-11 rounded-2xl bg-gradient-to-tr ${other.avatarBg || 'from-blue-500 to-indigo-600'} border border-white/15 flex items-center justify-center text-xl shadow-md`}>
+                        {other.avatarEmoji || '💬'}
+                      </div>
+                      <span className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-[#0d111a] ${statusInfo.dotClass}`} />
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="font-bold text-xs sm:text-sm text-white truncate">
+                          {other.name}
+                        </span>
+                        <span className="text-[10px] text-white/40 shrink-0">
+                          {formatTime(conv.updatedAt)}
                         </span>
                       </div>
 
-                      <div className="flex items-center justify-between gap-2">
-                        <p className={`text-xs truncate ${c.unreadCount > 0 ? 'text-white font-medium' : 'text-white/50'}`}>
-                          {c.lastMessage
-                            ? c.lastMessage.attachment
-                              ? `[파일] ${c.lastMessage.attachment.name}`
-                              : c.lastMessage.text
-                            : '새로운 단체 채팅방입니다.'}
+                      <div className="flex items-center justify-between gap-1 mt-0.5">
+                        <p className="text-xs text-white/60 truncate">
+                          {conv.lastMessage?.text || '대화를 시작해보세요'}
                         </p>
-                        {c.unreadCount > 0 && (
-                          <span className="shrink-0 px-2 py-0.5 bg-indigo-600 border border-indigo-400/30 text-white rounded-full text-[10px] font-bold shadow-sm">
-                            {c.unreadCount}
+                        {conv.unreadCount > 0 && (
+                          <span className="px-1.5 py-0.2 text-[10px] font-bold bg-blue-600 text-white rounded-full shrink-0">
+                            {conv.unreadCount}
                           </span>
                         )}
                       </div>
                     </div>
                   </button>
                 );
-              }
+              })
+            )}
+          </>
+        )}
 
-              // 1:1 Chat item
-              const other = c.otherUser;
-              if (!other) return null;
-              const otherStatusInfo = getUserStatusInfo(other.id, other.status);
-
-              return (
-                <button
-                  key={c.id}
-                  id={`conversation-item-${other.username}`}
-                  type="button"
-                  onClick={() => onSelectConversation(c.id)}
-                  className={`w-full p-3 rounded-2xl flex items-center gap-3 text-left transition-all relative ${
-                    isSelected
-                      ? 'bg-white/10 border border-white/15 text-white shadow-sm backdrop-blur-md'
-                      : 'hover:bg-white/5 text-white/80 border border-transparent hover:border-white/5'
-                  }`}
-                >
-                  {/* Avatar with dynamic Status Indicator */}
-                  <div className="relative shrink-0">
-                    <div className={`w-11 h-11 rounded-2xl bg-gradient-to-tr ${other.avatarBg || 'from-indigo-500 to-blue-600'} border border-white/15 flex items-center justify-center text-xl shadow-md`}>
-                      {other.avatarEmoji || '💬'}
-                    </div>
-                    {/* Status Dot: Online (Green), DND (Red), Offline (Gray) */}
-                    <span
-                      className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 border-2 border-[#0c0e14] rounded-full ${otherStatusInfo.dotClass}`}
-                      title={otherStatusInfo.label}
-                    />
-                  </div>
-
-                  {/* Info */}
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-1 mb-0.5">
-                      <div className="flex items-center gap-1.5 truncate">
-                        <span className="font-semibold text-sm text-white truncate">
-                          {other.name}
-                        </span>
-                        <span className="text-xs text-blue-400 font-mono shrink-0">
-                          @{other.username}
-                        </span>
-                      </div>
-                      <span className="text-[10px] text-white/40 shrink-0 font-mono">
-                        {formatTime(c.lastMessage?.createdAt || c.updatedAt)}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between gap-2">
-                      <p className={`text-xs truncate ${c.unreadCount > 0 ? 'text-white font-medium' : 'text-white/50'}`}>
-                        {c.lastMessage
-                          ? c.lastMessage.attachment
-                            ? `[파일] ${c.lastMessage.attachment.name}`
-                            : c.lastMessage.text
-                          : '대화를 시작해보세요.'}
-                      </p>
-                      {c.unreadCount > 0 && (
-                        <span className="shrink-0 px-2 py-0.5 bg-indigo-600 border border-indigo-400/30 text-white rounded-full text-[10px] font-bold shadow-sm">
-                          {c.unreadCount}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </button>
-              );
-            })
-          ) : (
-            <div className="py-12 px-4 text-center text-white/40">
-              <MessageSquare className="w-8 h-8 mx-auto mb-2 text-white/20" />
-              <p className="text-sm font-medium text-white/60">대화 목록이 없습니다</p>
-              <p className="text-xs text-white/40 mt-1">
-                친구를 추가하거나 단체방을 만들어 대화를 시작해보세요
-              </p>
-            </div>
-          )
-        ) : (
-          /* Friends View */
-          filteredFriends.length > 0 ? (
-            filteredFriends.map((u) => {
-              const friendStatusInfo = getUserStatusInfo(u.id, u.status);
-
-              return (
-                <div
-                  key={u.id}
-                  id={`friend-item-${u.username}`}
-                  className="p-2.5 rounded-2xl hover:bg-white/5 border border-white/5 hover:border-white/10 flex items-center justify-between gap-2 transition-all bg-white/[0.02]"
-                >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="relative shrink-0">
-                      <div className={`w-10 h-10 rounded-xl bg-gradient-to-tr ${u.avatarBg || 'from-indigo-500 to-blue-600'} border border-white/10 flex items-center justify-center text-lg shadow-sm`}>
-                        {u.avatarEmoji || '💬'}
-                      </div>
-                      {/* Dynamic status dot: Green, Red, or Gray */}
-                      <span
-                        className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 border-2 border-[#0c0e14] rounded-full ${friendStatusInfo.dotClass}`}
-                        title={friendStatusInfo.label}
-                      />
-                    </div>
-
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-semibold text-xs text-white truncate">{u.name}</span>
-                        <span className="text-[11px] text-blue-400 font-mono">@{u.username}</span>
-                      </div>
-                      <div className="flex items-center gap-1.5 mt-0.5">
-                        <span className={`text-[10px] px-1.5 py-0.2 rounded border ${friendStatusInfo.badgeClass}`}>
-                          {friendStatusInfo.label}
-                        </span>
-                        {u.customStatus && (
-                          <p className="text-[11px] text-white/50 truncate">
-                            {u.customStatus}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
+        {/* ===================== FRIENDS TAB (Logged In) ===================== */}
+        {tab === 'friends' && !isGuest && (
+          <>
+            {filteredFriends.length === 0 ? (
+              <div className="h-48 flex flex-col items-center justify-center p-4 text-center text-white/50">
+                <p className="text-xs">등록된 친구가 없습니다.</p>
+                {onOpenAddFriendModal && (
                   <button
-                    id={`friend-chat-btn-${u.username}`}
+                    id="empty-friends-add-btn"
+                    type="button"
+                    onClick={onOpenAddFriendModal}
+                    className="mt-2 text-xs text-blue-400 hover:underline"
+                  >
+                    + 친구 추가하러 가기
+                  </button>
+                )}
+              </div>
+            ) : (
+              filteredFriends.map((f) => {
+                const statusInfo = getUserStatusInfo(f.id, f.status);
+                return (
+                  <div
+                    key={f.id}
+                    className="p-2.5 rounded-2xl bg-white/[0.02] hover:bg-white/5 border border-white/5 flex items-center justify-between gap-3 transition-colors"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => onOpenUserDetail && onOpenUserDetail(f)}
+                      className="flex items-center gap-3 min-w-0 text-left flex-1"
+                    >
+                      <div className="relative shrink-0">
+                        <div className={`w-10 h-10 rounded-xl bg-gradient-to-tr ${f.avatarBg || 'from-blue-500 to-indigo-600'} border border-white/15 flex items-center justify-center text-lg`}>
+                          {f.avatarEmoji || '💬'}
+                        </div>
+                        <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#0d111a] ${statusInfo.dotClass}`} />
+                      </div>
+
+                      <div className="min-w-0">
+                        <div className="font-semibold text-xs sm:text-sm text-white truncate">
+                          {f.name}
+                        </div>
+                        <div className="text-[11px] text-white/50 font-mono truncate">
+                          @{f.username}
+                        </div>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => onStartChatWithUser(f)}
+                      className="px-2.5 py-1.5 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-400/30 text-xs font-medium transition-colors shrink-0"
+                    >
+                      대화
+                    </button>
+                  </div>
+                );
+              })
+            )}
+          </>
+        )}
+
+        {/* ===================== EXPLORE TAB (Guest or Explorer) ===================== */}
+        {(tab === 'explore' || (isGuest && tab !== 'chats')) && (
+          <div className="space-y-1.5">
+            <div className="px-2 py-1 flex items-center justify-between text-[11px] text-white/50">
+              <span>전체 등록 유저 ({filteredAllUsers.length}명)</span>
+              <span>클릭하여 프로필 보기</span>
+            </div>
+
+            {filteredAllUsers.length === 0 ? (
+              <div className="h-40 flex items-center justify-center text-xs text-white/40">
+                검색된 유저가 없습니다.
+              </div>
+            ) : (
+              filteredAllUsers.map((u) => {
+                const statusInfo = getUserStatusInfo(u.id, u.status);
+                const isAdmin = u.username.toLowerCase() === 'jiukhan0215';
+
+                return (
+                  <button
+                    key={u.id}
+                    id={`guest-user-item-${u.id}`}
                     type="button"
                     onClick={() => {
-                      onStartChatWithUser(u);
-                      setTab('chats');
+                      if (onOpenUserDetail) onOpenUserDetail(u);
                     }}
-                    className="shrink-0 px-3 py-1.5 bg-indigo-600/30 hover:bg-indigo-600 text-indigo-200 hover:text-white rounded-xl text-xs font-medium border border-indigo-400/30 transition-all shadow-sm"
+                    className="w-full p-2.5 rounded-2xl bg-white/[0.02] hover:bg-white/5 border border-white/5 flex items-center gap-3 text-left transition-colors group"
                   >
-                    대화하기
-                  </button>
-                </div>
-              );
-            })
-          ) : (
-            <div className="py-12 px-4 text-center text-white/40">
-              <Users className="w-8 h-8 mx-auto mb-2 text-white/20" />
-              <p className="text-sm font-medium text-white/60">등록된 친구가 없습니다</p>
-              <p className="text-xs text-white/40 mt-1">
-                상단의 '친구 추가' 버튼을 눌러 요청을 보내보세요
-              </p>
-            </div>
-          )
-        )}
-      </div>
+                    <div className="relative shrink-0">
+                      <div className={`w-10 h-10 rounded-xl bg-gradient-to-tr ${u.avatarBg || 'from-blue-500 to-indigo-600'} border border-white/15 flex items-center justify-center text-lg group-hover:scale-105 transition-transform`}>
+                        {u.avatarEmoji || '💬'}
+                      </div>
+                      <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#0d111a] ${statusInfo.dotClass}`} />
+                    </div>
 
-      {/* Footer Info */}
-      <div className="p-3.5 border-t border-white/10 bg-black/30 text-[11px] text-white/40 flex items-center justify-between">
-        <span className="flex items-center gap-1.5 font-semibold text-white/70 tracking-wide">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block animate-pulse" />
-          JK Message
-        </span>
-        <button
-          id="sidebar-logout-btn"
-          type="button"
-          onClick={onLogout}
-          className="text-white/50 hover:text-rose-300 transition-colors flex items-center gap-1"
-        >
-          <LogOut className="w-3.5 h-3.5" />
-          <span>로그아웃</span>
-        </button>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-semibold text-xs sm:text-sm text-white truncate group-hover:text-blue-300 transition-colors">
+                          {u.name}
+                        </span>
+                        {isAdmin && (
+                          <span className="px-1.5 py-0.2 text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded flex items-center gap-0.5 shrink-0">
+                            <Shield className="w-2.5 h-2.5" />
+                            <span>관리자</span>
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-white/50 font-mono truncate">
+                        @{u.username}
+                      </div>
+                      {u.customStatus && (
+                        <p className="text-[10px] text-white/40 truncate mt-0.5">
+                          "{u.customStatus}"
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="shrink-0 text-xs text-white/40 group-hover:text-white transition-colors">
+                      프로필 ↗
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        )}
+
       </div>
 
     </aside>

@@ -72,6 +72,7 @@ export interface GroupRoom {
 export interface Conversation {
   id: string;
   isGroup?: boolean;
+  isCommandBot?: boolean;
   group?: GroupRoom;
   participantIds: string[];
   otherUser?: User; // for 1:1 chats
@@ -95,5 +96,6 @@ export type WSEvent =
   | { type: 'friend:response'; payload: { request: FriendRequest; accepted: boolean } }
   | { type: 'group:created'; payload: { group: GroupRoom } }
   | { type: 'group:updated'; payload: { group: GroupRoom } }
-  | { type: 'group:left'; payload: { groupId: string; userId: string } };
+  | { type: 'group:left'; payload: { groupId: string; userId: string } }
+  | { type: 'system:broadcast'; payload: { id: string; title: string; message: string; senderName: string; timestamp: number } };
 

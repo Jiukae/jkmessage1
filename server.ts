@@ -88,6 +88,18 @@ if (!fs.existsSync(UPLOADS_DIR)) {
 // Initial seed data
 const initialUsers: UserRecord[] = [
   {
+    id: "user_jiukhan0215",
+    username: "jiukhan0215",
+    name: "한지욱 (Admin)",
+    password: "password123",
+    avatarBg: "from-amber-500 to-red-600",
+    avatarEmoji: "👑",
+    customStatus: "⚡ JK Message 시스템 총괄 관리자",
+    status: "online",
+    lastSeen: Date.now(),
+    createdAt: Date.now() - 86400000 * 10,
+  },
+  {
     id: "user_jiuk",
     username: "jiuk",
     name: "지욱 (Jiuk)",
@@ -105,6 +117,19 @@ const initialFriendRequests: FriendRequestRecord[] = [];
 const initialMessages: MessageRecord[] = [];
 const initialGroups: GroupRoomRecord[] = [];
 
+// Special Command Bot entity
+const COMMAND_BOT: UserRecord = {
+  id: "bot_command",
+  username: "명령어",
+  name: "⚡ 시스템 명령어 터미널",
+  avatarBg: "from-amber-500 to-red-600",
+  avatarEmoji: "⚡",
+  customStatus: "관리자 전용 제어 콘솔 (jiukhan0215 전용)",
+  status: "online",
+  lastSeen: Date.now(),
+  createdAt: 0,
+};
+
 interface DBState {
   users: UserRecord[];
   friendRequests: FriendRequestRecord[];
@@ -118,8 +143,13 @@ function loadDB(): DBState {
       const content = fs.readFileSync(DB_FILE, "utf-8").trim();
       if (content) {
         const data = JSON.parse(content);
+        const loadedUsers = Array.isArray(data.users) ? data.users : initialUsers;
+        // Ensure admin user jiukhan0215 is always present
+        if (!loadedUsers.some((u: UserRecord) => u.username.toLowerCase() === "jiukhan0215")) {
+          loadedUsers.unshift(initialUsers[0]);
+        }
         return {
-          users: Array.isArray(data.users) ? data.users : initialUsers,
+          users: loadedUsers,
           friendRequests: Array.isArray(data.friendRequests) ? data.friendRequests : initialFriendRequests,
           messages: Array.isArray(data.messages) ? data.messages : initialMessages,
           groups: Array.isArray(data.groups) ? data.groups : initialGroups,
@@ -374,6 +404,182 @@ async function startServer() {
         client.send(payload);
       }
     }
+  }
+
+  function executeAdminCommand(cmd: string, adminUser: UserRecord): string {
+    const parts = cmd.trim().split(' ').filter(Boolean);
+    const main = parts[0]?.toLowerCase() || '';
+    const args = parts.slice(1);
+
+    if (main === '/help' || main === '도움말' || main === '/?' || !main) {
+      return [
+        `👑 **[JK Message 시스템 관리자 콘솔]** (접속자: @${adminUser.username})`,
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+        `• \`/help\` 또는 \`도움말\` : 명령어 도움말 출력`,
+        `• \`/users\` 또는 \`유저목록\` : 등록된 모든 사용자 목록 및 상태 조회`,
+        `• \`/stats\` 또는 \`서버상태\` : 실시간 접속자, 소켓, DB 및 메시지 통계`,
+        `• \`/info <아이디>\` : 특정 유저의 상세 정보 조회`,
+        `• \`/broadcast <공지내용>\` : 전체 접속자에게 실시간 긴급 공지 전송`,
+        `• \`/status <online|dnd|offline> [메시지]\` : 관리자 상태 및 상태메시지 즉시 변경`,
+        `• \`/kick <아이디>\` : 대상 유저의 실시간 소켓 연결 강제 종료`,
+        `• \`/db\` : Firestore 클라우드 동기화 상태 점검`,
+        `• \`/clear\` : 관리자 명령어 대화 내역 초기화`,
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+        `💡 팁: 아래 빠른 실행 버튼을 누르거나 채팅창에 명령어를 직접 입력하세요.`,
+      ].join('\n');
+    }
+
+    if (main === '/users' || main === '유저목록' || main === '유저') {
+      const onlineSet = new Set(userSockets.keys());
+      const userLines = db.users.map((u, idx) => {
+        const isOnline = onlineSet.has(u.id);
+        const statusIcon = u.status === 'dnd' ? '⛔ 방해금지' : isOnline ? '🟢 온라인' : '⚪ 오프라인';
+        const createdDate = new Date(u.createdAt).toLocaleDateString('ko-KR');
+        return `${idx + 1}. **${u.name}** (@${u.username}) - ${statusIcon}\n   └ 가입일: ${createdDate} | 최근: ${new Date(u.lastSeen).toLocaleTimeString('ko-KR')}`;
+      });
+
+      return [
+        `👥 **[전체 등록 회원 목록 (총 ${db.users.length}명)]**`,
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+        userLines.join('\n'),
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+        `🟢 실시간 활성 소켓 접속자: ${onlineSet.size}명`,
+      ].join('\n');
+    }
+
+    if (main === '/stats' || main === '서버상태' || main === '통계') {
+      const onlineSet = new Set(userSockets.keys());
+      const totalMessages = db.messages.length;
+      const totalGroups = db.groups.length;
+      const totalFriendReqs = db.friendRequests.length;
+      const uptimeSec = Math.floor(process.uptime());
+      const uptimeStr = `${Math.floor(uptimeSec / 3600)}시간 ${Math.floor((uptimeSec % 3600) / 60)}분 ${uptimeSec % 60}초`;
+
+      return [
+        `📊 **[JK Message 실시간 시스템 통계]**`,
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+        `• ⚡ 서버 가동 시간: ${uptimeStr}`,
+        `• 🟢 온라인 연결 유저: ${onlineSet.size}명`,
+        `• 👥 총 등록 회원수: ${db.users.length}명`,
+        `• 💬 누적 저장 메시지: ${totalMessages}개`,
+        `• 🏢 개설된 단체방: ${totalGroups}개`,
+        `• 🤝 친구 요청 기록: ${totalFriendReqs}건`,
+        `• 💾 DB 모드: ${getFirestoreClient() ? '☁️ Firebase Firestore (영구 동기화)' : '📁 로컬 JSON'}`,
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+        `✅ 모든 시스템 프로세스가 정상 가동 중입니다.`,
+      ].join('\n');
+    }
+
+    if (main === '/info' || main === '유저정보') {
+      const targetUsername = args[0]?.replace(/^@/, '').toLowerCase();
+      if (!targetUsername) {
+        return `⚠️ 사용법: \`/info <유저아이디>\` (예: \`/info jiuk\`)`;
+      }
+      const target = db.users.find(u => u.username.toLowerCase() === targetUsername);
+      if (!target) {
+        return `❌ '@${targetUsername}' 아이디를 가진 사용자를 찾을 수 없습니다.`;
+      }
+      const isOnline = userSockets.has(target.id);
+      return [
+        `👤 **[사용자 상세 정보: @${target.username}]**`,
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+        `• 고유 ID: \`${target.id}\``,
+        `• 표시 이름: **${target.name}**`,
+        `• 상태 이모지: ${target.avatarEmoji}`,
+        `• 접속 상태: ${isOnline ? '🟢 온라인' : '⚪ 오프라인'} (${target.status})`,
+        `• 상태 메시지: ${target.customStatus || '(없음)'}`,
+        `• 가입 일시: ${new Date(target.createdAt).toLocaleString('ko-KR')}`,
+        `• 최근 활동: ${new Date(target.lastSeen).toLocaleString('ko-KR')}`,
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+      ].join('\n');
+    }
+
+    if (main === '/broadcast' || main === '공지') {
+      const broadcastMsg = args.join(' ').trim();
+      if (!broadcastMsg) {
+        return `⚠️ 사용법: \`/broadcast <공지 내용>\` (예: \`/broadcast 점검 안내: 오늘 밤 12시\`)`;
+      }
+
+      const alertPayload = JSON.stringify({
+        type: "system:broadcast",
+        payload: {
+          id: `bc_${Date.now()}`,
+          title: "📢 시스템 공지사항 (최고 관리자)",
+          message: broadcastMsg,
+          senderName: adminUser.name,
+          timestamp: Date.now(),
+        }
+      });
+
+      let sentCount = 0;
+      for (const client of wss.clients) {
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(alertPayload);
+          sentCount++;
+        }
+      }
+
+      return `📢 **[공지 전송 완료]**\n현재 접속 중인 ${sentCount}개의 클라이언트 화면에 공지가 실시간 송출되었습니다.\n내용: "${broadcastMsg}"`;
+    }
+
+    if (main === '/status' || main === '상태변경') {
+      const newStatus = args[0]?.toLowerCase() as UserStatusMode;
+      const newMsg = args.slice(1).join(' ').trim();
+      if (!['online', 'dnd', 'offline'].includes(newStatus)) {
+        return `⚠️ 사용법: \`/status <online|dnd|offline> [상태메시지]\``;
+      }
+      adminUser.status = newStatus;
+      if (newMsg) adminUser.customStatus = newMsg;
+      saveDB(db, { type: 'user', item: adminUser });
+      broadcastPresence();
+      return `✅ 관리자 상태가 **${newStatus.toUpperCase()}** (상태메시지: "${adminUser.customStatus}")로 변경되었습니다.`;
+    }
+
+    if (main === '/kick' || main === '강퇴') {
+      const targetUsername = args[0]?.replace(/^@/, '').toLowerCase();
+      if (!targetUsername) {
+        return `⚠️ 사용법: \`/kick <유저아이디>\``;
+      }
+      const target = db.users.find(u => u.username.toLowerCase() === targetUsername);
+      if (!target) {
+        return `❌ '@${targetUsername}' 유저를 찾을 수 없습니다.`;
+      }
+      const sockets = userSockets.get(target.id);
+      if (sockets && sockets.size > 0) {
+        for (const ws of sockets) {
+          ws.send(JSON.stringify({ type: 'system:kicked', payload: { reason: '관리자에 의해 연결이 종료되었습니다.' } }));
+          ws.close();
+        }
+        userSockets.delete(target.id);
+        broadcastPresence();
+        return `⚡ '@${target.username}' 사용자의 활성 소켓(${sockets.size}개) 연결을 강제 종료했습니다.`;
+      } else {
+        return `ℹ️ '@${target.username}' 사용자는 현재 접속 중이 아닙니다.`;
+      }
+    }
+
+    if (main === '/db' || main === '디비') {
+      const hasFirestore = !!getFirestoreClient();
+      return [
+        `💾 **[데이터베이스 현황]**`,
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+        `• 저장 모드: ${hasFirestore ? '☁️ Firebase Cloud Firestore (영구 동기화)' : '📁 Local db.json'}`,
+        `• 저장된 유저 수: ${db.users.length}개`,
+        `• 저장된 메시지 수: ${db.messages.length}개`,
+        `• 저장된 단체방 수: ${db.groups.length}개`,
+        `• 저장된 친구요청 수: ${db.friendRequests.length}개`,
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+        `✅ 데이터 무결성 검증 완료. 정상 작동 중입니다.`,
+      ].join('\n');
+    }
+
+    if (main === '/clear' || main === '초기화') {
+      db.messages = db.messages.filter(m => m.conversationId !== 'conv_command');
+      saveDB(db);
+      return `🧹 명령어 터미널 대화 기록이 모두 초기화되었습니다.`;
+    }
+
+    return `❓ 알 수 없는 명령어: \`${cmd}\`\n\`/help\`를 입력하면 사용 가능한 모든 관리자 명령어 목록을 확인할 수 있습니다.`;
   }
 
   wss.on("connection", (ws: WebSocket) => {
@@ -1113,11 +1319,13 @@ async function startServer() {
     return res.json({ success: true, group });
   });
 
-  // Get conversations for user (1:1 with friends + Group chats)
+  // Get conversations for user (1:1 with friends + Group chats + Admin Command Bot)
   app.get("/api/conversations", (req, res) => {
     const userId = req.query.userId as string;
     if (!userId) return res.json({ conversations: [] });
 
+    const currentUser = db.users.find((u) => u.id === userId);
+    const isAdminUser = currentUser?.username.toLowerCase() === "jiukhan0215";
     const onlineSet = new Set(userSockets.keys());
 
     // 1. Direct (1:1) conversations
@@ -1127,7 +1335,7 @@ async function startServer() {
     >();
 
     for (const msg of db.messages) {
-      if (msg.receiverId !== "group" && !msg.conversationId.startsWith("group_")) {
+      if (msg.receiverId !== "group" && !msg.conversationId.startsWith("group_") && msg.conversationId !== "conv_command") {
         if (msg.senderId === userId || msg.receiverId === userId) {
           const otherUserId = msg.senderId === userId ? msg.receiverId : msg.senderId;
           
@@ -1210,20 +1418,72 @@ async function startServer() {
       };
     });
 
-    const allConversations = [...directConversations, ...groupConversations].sort(
+    const allConversations: any[] = [...directConversations, ...groupConversations].sort(
       (a: any, b: any) => (b?.updatedAt || 0) - (a?.updatedAt || 0)
     );
+
+    // If admin jiukhan0215, prepend the Command Bot conversation
+    if (isAdminUser) {
+      const cmdMsgs = db.messages.filter((m) => m.conversationId === "conv_command");
+      const lastCmdMsg = cmdMsgs.length > 0 ? cmdMsgs[cmdMsgs.length - 1] : undefined;
+      const cmdConv = {
+        id: "conv_command",
+        isGroup: false,
+        isCommandBot: true,
+        participantIds: [userId, "bot_command"],
+        otherUser: {
+          id: "bot_command",
+          username: "명령어",
+          name: "⚡ 시스템 명령어 터미널",
+          avatarBg: "from-amber-500 to-red-600",
+          avatarEmoji: "⚡",
+          customStatus: "관리자 전용 제어 콘솔 (jiukhan0215 전용)",
+          status: "online" as UserStatusMode,
+          lastSeen: Date.now(),
+          createdAt: 0,
+          isOnline: true,
+        },
+        lastMessage: lastCmdMsg,
+        unreadCount: 0,
+        updatedAt: lastCmdMsg ? lastCmdMsg.createdAt : Date.now(),
+      };
+      allConversations.unshift(cmdConv);
+    }
 
     return res.json({ conversations: allConversations });
   });
 
-  // Get messages for conversation (1:1 or Group)
+  // Get messages for conversation (1:1 or Group or Admin Command)
   app.get("/api/messages", (req, res) => {
     const conversationId = req.query.conversationId as string;
     const userId = req.query.userId as string;
 
     if (!conversationId) {
       return res.status(400).json({ error: "conversationId is required" });
+    }
+
+    // Admin command bot conversation
+    if (conversationId === "conv_command") {
+      const currentUser = db.users.find((u) => u.id === userId);
+      if (!currentUser || currentUser.username.toLowerCase() !== "jiukhan0215") {
+        return res.status(403).json({ error: "관리자(jiukhan0215)만 접근할 수 있는 명령어 방입니다." });
+      }
+
+      const messages = db.messages
+        .filter((m) => m.conversationId === "conv_command")
+        .map((m) => {
+          if (m.senderId === "bot_command") {
+            return { ...m, sender: COMMAND_BOT };
+          }
+          const senderUser = db.users.find((u) => u.id === m.senderId);
+          return {
+            ...m,
+            sender: senderUser ? (({ password: _, ...safe }) => safe)(senderUser) : undefined,
+          };
+        })
+        .sort((a, b) => a.createdAt - b.createdAt);
+
+      return res.json({ messages, isGroup: false });
     }
 
     const isGroup = conversationId.startsWith("group_");
@@ -1320,7 +1580,7 @@ async function startServer() {
     return res.json({ messages, isGroup: false });
   });
 
-  // Send message (1:1 or Group)
+  // Send message (1:1, Group, or Admin Command Bot)
   app.post("/api/messages/send", (req, res) => {
     const { senderId, receiverId, conversationId: customConvId, text, replyTo, attachment } = req.body;
 
@@ -1330,6 +1590,64 @@ async function startServer() {
 
     if (!text && !attachment) {
       return res.status(400).json({ error: "메시지 내용이나 첨부파일을 입력해주세요." });
+    }
+
+    // Admin Command Bot Message
+    if (customConvId === "conv_command" || receiverId === "bot_command") {
+      const senderUser = db.users.find((u) => u.id === senderId);
+      if (!senderUser || senderUser.username.toLowerCase() !== "jiukhan0215") {
+        return res.status(403).json({ error: "관리자만 명령어를 실행할 수 있습니다." });
+      }
+
+      const userMsg: MessageRecord = {
+        id: `msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        conversationId: "conv_command",
+        senderId: senderUser.id,
+        receiverId: "bot_command",
+        text: (text || "").trim(),
+        createdAt: Date.now(),
+        read: true,
+      };
+      db.messages.push(userMsg);
+      saveDB(db, { type: 'message', item: userMsg });
+
+      const populatedUserMsg = {
+        ...userMsg,
+        sender: (({ password: _, ...safe }) => safe)(senderUser),
+      };
+
+      // Execute command and generate bot reply
+      const botResponseText = executeAdminCommand(text || "", senderUser);
+
+      const botMsg: MessageRecord = {
+        id: `msg_bot_${Date.now() + 5}_${Math.random().toString(36).substring(2, 7)}`,
+        conversationId: "conv_command",
+        senderId: "bot_command",
+        receiverId: senderUser.id,
+        text: botResponseText,
+        createdAt: Date.now() + 10,
+        read: true,
+      };
+      db.messages.push(botMsg);
+      saveDB(db, { type: 'message', item: botMsg });
+
+      const populatedBotMsg = {
+        ...botMsg,
+        sender: COMMAND_BOT,
+      };
+
+      // Broadcast bot message to admin user's active sockets
+      setTimeout(() => {
+        broadcastToUser(senderUser.id, {
+          type: "message:new",
+          payload: { message: populatedBotMsg },
+        });
+      }, 50);
+
+      return res.json({
+        message: populatedUserMsg,
+        botResponse: populatedBotMsg,
+      });
     }
 
     const isGroup = (customConvId && customConvId.startsWith("group_")) || receiverId === "group";
@@ -1427,6 +1745,20 @@ async function startServer() {
     broadcastToUser(senderId, wsPayload);
 
     return res.json({ message: populatedMsg });
+  });
+
+  // Direct Admin Command Endpoint
+  app.post("/api/admin/command", (req, res) => {
+    const { userId, command } = req.body;
+    if (!userId || !command) {
+      return res.status(400).json({ error: "userId and command are required" });
+    }
+    const senderUser = db.users.find((u) => u.id === userId);
+    if (!senderUser || senderUser.username.toLowerCase() !== "jiukhan0215") {
+      return res.status(403).json({ error: "관리자만 명령어를 실행할 수 있습니다." });
+    }
+    const result = executeAdminCommand(command, senderUser);
+    return res.json({ success: true, result });
   });
 
   // React to message (1:1 or Group)
