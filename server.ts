@@ -1453,6 +1453,76 @@ async function startServer() {
     return res.json({ conversations: allConversations });
   });
 
+  // Create or get direct conversation between users
+  app.post("/api/conversations/create", (req, res) => {
+    const { userIds } = req.body;
+    if (!userIds || !Array.isArray(userIds) || userIds.length < 2) {
+      return res.status(400).json({ error: "참여 유저 ID가 필요합니다." });
+    }
+
+    const [u1, u2] = userIds;
+    const user1 = db.users.find((u) => u.id === u1);
+    const user2 =
+      db.users.find((u) => u.id === u2) ||
+      (u2 === "bot_command" ? COMMAND_BOT : undefined);
+
+    if (!user1 || !user2) {
+      return res.status(404).json({ error: "사용자를 찾을 수 없습니다." });
+    }
+
+    // Special command bot for admin
+    if (u2 === "bot_command" || u1 === "bot_command") {
+      const nonBotUser = u1 === "bot_command" ? user2 : user1;
+      if (nonBotUser.username.toLowerCase() !== "jiukhan0215") {
+        return res.status(403).json({ error: "관리자 전용 명령어 방입니다." });
+      }
+      return res.json({
+        conversation: {
+          id: "conv_command",
+          isGroup: false,
+          isCommandBot: true,
+          participantIds: [u1, u2],
+          otherUser: COMMAND_BOT,
+          lastMessage: db.messages.filter((m) => m.conversationId === "conv_command").slice(-1)[0],
+          unreadCount: 0,
+          updatedAt: Date.now(),
+        },
+      });
+    }
+
+    if (u1 === u2) {
+      return res.status(400).json({ error: "자기 자신과의 대화는 지원되지 않습니다." });
+    }
+
+    const onlineSet = new Set(userSockets.keys());
+    const convId = getConversationId(u1, u2);
+    const otherUser = u1 === user1.id ? user2 : user1;
+    const { password: _, ...safeOther } = otherUser;
+
+    const convMessages = db.messages.filter(
+      (m) =>
+        m.conversationId === convId ||
+        ((m.senderId === u1 && m.receiverId === u2) ||
+          (m.senderId === u2 && m.receiverId === u1))
+    );
+    const lastMsg = convMessages.length > 0 ? convMessages[convMessages.length - 1] : undefined;
+
+    const conversation = {
+      id: convId,
+      isGroup: false,
+      participantIds: [u1, u2],
+      otherUser: {
+        ...safeOther,
+        isOnline: onlineSet.has(otherUser.id),
+      },
+      lastMessage: lastMsg,
+      unreadCount: 0,
+      updatedAt: lastMsg ? lastMsg.createdAt : Date.now(),
+    };
+
+    return res.json({ conversation });
+  });
+
   // Get messages for conversation (1:1 or Group or Admin Command)
   app.get("/api/messages", (req, res) => {
     const conversationId = req.query.conversationId as string;

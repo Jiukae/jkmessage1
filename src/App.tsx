@@ -796,13 +796,18 @@ export default function App() {
 
   // 2. Main Messenger View (Sidebar on Left, Chat in Middle, Profile on Bottom Right)
   return (
-    <div className="relative flex h-[100dvh] w-full bg-[#0a0d14] text-slate-100 overflow-hidden font-sans select-none antialiased md:p-3 lg:p-4">
+    <div className="relative flex h-[100dvh] w-full bg-[#080711] text-slate-100 overflow-hidden font-sans select-none antialiased md:p-3 lg:p-4">
       
-      {/* Ambient Lighting Background */}
+      {/* Ambient Lighting Background (Rich Purple/Violet Aura) */}
       <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
-        <div className="absolute top-[-15%] left-[-10%] w-[50%] h-[50%] bg-blue-600/15 rounded-full blur-[140px]" />
-        <div className="absolute bottom-[-15%] right-[-10%] w-[50%] h-[50%] bg-purple-600/15 rounded-full blur-[140px]" />
-        <div className="absolute top-[40%] left-[30%] w-[30%] h-[30%] bg-indigo-500/10 rounded-full blur-[120px]" />
+        {/* Top-left purple/violet glow */}
+        <div className="absolute -top-32 -left-32 w-[550px] h-[550px] bg-gradient-to-br from-purple-600/40 via-violet-600/30 to-indigo-700/20 rounded-full blur-[130px] animate-pulse" style={{ animationDuration: '8s' }} />
+        {/* Bottom-right fuchsia/purple glow */}
+        <div className="absolute -bottom-32 -right-32 w-[600px] h-[600px] bg-gradient-to-tl from-purple-700/45 via-fuchsia-600/30 to-indigo-600/25 rounded-full blur-[140px] animate-pulse" style={{ animationDuration: '10s' }} />
+        {/* Center ambient violet aura */}
+        <div className="absolute top-[30%] left-[25%] w-[450px] h-[450px] bg-violet-600/20 rounded-full blur-[110px]" />
+        {/* Bottom-left deep indigo glow */}
+        <div className="absolute -bottom-20 left-[20%] w-[400px] h-[400px] bg-indigo-700/25 rounded-full blur-[120px]" />
       </div>
 
       {/* Broadcast Alert Toast */}
@@ -826,34 +831,10 @@ export default function App() {
         </div>
       )}
 
-      {/* Main Glass App Container */}
-      <div className="relative z-10 w-full h-full flex bg-[#0e121d]/85 backdrop-blur-3xl md:border md:border-white/15 md:rounded-3xl shadow-2xl overflow-hidden">
+      {/* Main Glass App Container with purple aura reflection */}
+      <div className="relative z-10 w-full h-full flex bg-[#0c0d18]/75 backdrop-blur-3xl md:border md:border-purple-500/20 md:rounded-3xl shadow-[0_0_80px_rgba(139,92,246,0.18)] overflow-hidden">
         
-        {/* ================= LEFT SIDEBAR ================= */}
-        <div
-          className={`h-full w-full md:w-auto shrink-0 md:flex ${
-            mobileView === 'sidebar' ? 'flex' : 'hidden md:flex'
-          }`}
-        >
-          <Sidebar
-            currentUser={currentUser}
-            conversations={conversations}
-            friends={friends}
-            allUsers={allUsers}
-            activeConversationId={activeConversationId}
-            onlineUserIds={onlineUserIds}
-            userStatuses={userStatuses}
-            pendingFriendRequestsCount={pendingFriendRequestsCount}
-            onOpenAddFriendModal={() => setShowAddFriendModal(true)}
-            onOpenCreateGroupModal={() => setShowCreateGroupModal(true)}
-            onSelectConversation={handleSelectConversation}
-            onStartChatWithUser={handleStartChatWithUser}
-            onOpenUserDetail={(u) => setSelectedExploreUser(u)}
-            onPromptLogin={() => {}}
-          />
-        </div>
-
-        {/* ================= MAIN CHAT / CONTENT AREA ================= */}
+        {/* ================= MAIN CHAT / CONTENT AREA (LEFT) ================= */}
         <div
           className={`h-full flex-1 flex flex-col min-w-0 bg-white/[0.01] ${
             mobileView === 'chat' ? 'flex' : 'hidden md:flex'
@@ -889,7 +870,7 @@ export default function App() {
               </div>
               <h2 className="text-xl font-bold text-white mb-1.5">대화를 선택하거나 시작해보세요</h2>
               <p className="text-xs text-white/50 max-w-sm mb-5 leading-relaxed">
-                왼쪽 목록에서 대화방을 선택하거나, 친구 추가 및 단체방을 개설하여 대화를 나눠보세요.
+                오른쪽 목록에서 대화방을 선택하거나, 친구 추가 및 단체방을 개설하여 대화를 나눠보세요.
               </p>
               <div className="flex flex-wrap items-center justify-center gap-2.5">
                 <button
@@ -915,15 +896,15 @@ export default function App() {
           ) : (
             /* Guest Explorer Home View */
             <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-white/60 bg-black/15">
-              <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-blue-600/20 to-purple-600/20 border border-white/15 flex items-center justify-center text-4xl mb-5 shadow-2xl backdrop-blur-xl">
+              <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-purple-600/20 via-indigo-600/20 to-blue-600/20 border border-purple-400/20 flex items-center justify-center text-4xl mb-5 shadow-2xl backdrop-blur-xl">
                 ⚡
               </div>
               <h2 className="text-2xl font-bold text-white mb-2">
                 실시간 JK Message 메신저
               </h2>
               <p className="text-xs sm:text-sm text-white/50 max-w-md mb-6 leading-relaxed">
-                로그인하지 않아도 왼쪽 사이드바에서 전체 가입 유저를 검색하고 프로필을 조회할 수 있습니다.
-                실시간 대화와 그룹 채팅을 이용하시려면 간편 로그인 또는 회원가입을 진행해주세요.
+                오른쪽 사이드바에서 전체 가입 유저를 검색하고 프로필을 조회할 수 있습니다.
+                실시간 대화와 그룹 채팅을 이용하시려면 오른쪽 하단에서 간편 로그인 또는 회원가입을 진행해주세요.
               </p>
 
               <div className="flex flex-wrap items-center justify-center gap-3">
@@ -931,7 +912,7 @@ export default function App() {
                   id="guest-main-register-btn"
                   type="button"
                   onClick={() => setAppView('register')}
-                  className="py-2.5 px-5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold rounded-2xl text-xs shadow-lg shadow-blue-600/30 border border-blue-400/30 transition-all flex items-center gap-2"
+                  className="py-2.5 px-5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold rounded-2xl text-xs shadow-lg shadow-purple-600/30 border border-purple-400/30 transition-all flex items-center gap-2"
                 >
                   <Sparkles className="w-4 h-4" />
                   <span>새 계정 만들기 (회원가입)</span>
@@ -941,22 +922,41 @@ export default function App() {
           )}
         </div>
 
-      </div>
+        {/* ================= RIGHT SIDEBAR (JK Message & 대화 목록) ================= */}
+        <div
+          className={`h-full w-full md:w-80 lg:w-96 shrink-0 md:flex ${
+            mobileView === 'sidebar' ? 'flex' : 'hidden md:flex'
+          }`}
+        >
+          <Sidebar
+            currentUser={currentUser}
+            conversations={conversations}
+            friends={friends}
+            allUsers={allUsers}
+            activeConversationId={activeConversationId}
+            onlineUserIds={onlineUserIds}
+            userStatuses={userStatuses}
+            pendingFriendRequestsCount={pendingFriendRequestsCount}
+            soundEnabled={soundEnabled}
+            onToggleSound={() => {
+              const next = sounds.toggleSound();
+              setSoundEnabled(next);
+            }}
+            onOpenProfileSettings={() => setShowProfileModal(true)}
+            onOpenStatusPicker={() => setShowStatusPicker(true)}
+            onLogout={handleLogout}
+            onNavigateToRegister={() => setAppView('register')}
+            onLoginSuccess={(user) => handleLoginSuccess(user, 'token', false)}
+            onOpenAddFriendModal={() => setShowAddFriendModal(true)}
+            onOpenCreateGroupModal={() => setShowCreateGroupModal(true)}
+            onSelectConversation={handleSelectConversation}
+            onStartChatWithUser={handleStartChatWithUser}
+            onOpenUserDetail={(u) => setSelectedExploreUser(u)}
+            onPromptLogin={() => {}}
+          />
+        </div>
 
-      {/* ================= BOTTOM RIGHT PROFILE WIDGET ================= */}
-      <BottomRightProfile
-        currentUser={currentUser}
-        soundEnabled={soundEnabled}
-        onToggleSound={() => {
-          const next = sounds.toggleSound();
-          setSoundEnabled(next);
-        }}
-        onOpenProfileSettings={() => setShowProfileModal(true)}
-        onOpenStatusPicker={() => setShowStatusPicker(true)}
-        onLogout={handleLogout}
-        onNavigateToRegister={() => setAppView('register')}
-        onLoginSuccess={(user) => handleLoginSuccess(user, 'token', false)}
-      />
+      </div>
 
       {/* ================= MODALS ================= */}
       

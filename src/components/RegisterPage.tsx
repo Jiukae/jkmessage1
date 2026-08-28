@@ -120,10 +120,11 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onBack, onRegisterSu
   };
 
   return (
-    <div className="min-h-screen w-full bg-[#0a0d14] text-white flex flex-col items-center justify-center p-4 relative overflow-y-auto">
-      {/* Background ambient lighting */}
-      <div className="absolute -top-40 -left-40 w-96 h-96 bg-blue-600/15 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-purple-600/15 rounded-full blur-3xl pointer-events-none" />
+    <div className="min-h-screen w-full bg-[#080711] text-white flex flex-col items-center justify-center p-4 relative overflow-y-auto">
+      {/* Background ambient lighting (Rich Purple/Violet Aura) */}
+      <div className="absolute -top-32 -left-32 w-[550px] h-[550px] bg-gradient-to-br from-purple-600/40 via-violet-600/30 to-indigo-700/20 rounded-full blur-[130px] pointer-events-none" />
+      <div className="absolute -bottom-32 -right-32 w-[600px] h-[600px] bg-gradient-to-tl from-purple-700/45 via-fuchsia-600/30 to-indigo-600/25 rounded-full blur-[140px] pointer-events-none" />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-violet-600/20 rounded-full blur-[120px] pointer-events-none" />
 
       {/* Main Centered Container */}
       <div className="w-full max-w-lg my-8 relative z-10">

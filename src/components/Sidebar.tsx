@@ -14,6 +14,7 @@ import {
   LogIn,
   CheckCheck,
 } from 'lucide-react';
+import { BottomRightProfile } from './BottomRightProfile';
 
 interface SidebarProps {
   currentUser: User | null;
@@ -24,6 +25,13 @@ interface SidebarProps {
   onlineUserIds: Set<string>;
   userStatuses: Record<string, { status: UserStatusMode; dndUntil?: number | null }>;
   pendingFriendRequestsCount?: number;
+  soundEnabled?: boolean;
+  onToggleSound?: () => void;
+  onOpenProfileSettings?: () => void;
+  onOpenStatusPicker?: () => void;
+  onLogout?: () => void;
+  onNavigateToRegister?: () => void;
+  onLoginSuccess?: (user: User) => void;
   onOpenAddFriendModal?: () => void;
   onOpenCreateGroupModal?: () => void;
   onSelectConversation: (conversationId: string) => void;
@@ -41,6 +49,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onlineUserIds,
   userStatuses,
   pendingFriendRequestsCount = 0,
+  soundEnabled = true,
+  onToggleSound = () => {},
+  onOpenProfileSettings = () => {},
+  onOpenStatusPicker = () => {},
+  onLogout = () => {},
+  onNavigateToRegister = () => {},
+  onLoginSuccess = () => {},
   onOpenAddFriendModal,
   onOpenCreateGroupModal,
   onSelectConversation,
@@ -166,12 +181,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const totalUnread = conversations.reduce((acc, c) => acc + (c.unreadCount || 0), 0);
 
   return (
-    <aside className="w-full md:w-80 lg:w-96 h-full flex flex-col bg-[#0d111a]/95 backdrop-blur-2xl border-r border-white/10 shrink-0 select-none z-20">
+    <aside className="w-full md:w-80 lg:w-96 h-full flex flex-col bg-[#0b0c16]/80 backdrop-blur-2xl border-l border-purple-500/15 shrink-0 select-none z-20">
       
       {/* Top Brand Header */}
-      <div className="p-4 sm:p-5 border-b border-white/10 bg-white/[0.02] flex items-center justify-between">
+      <div className="p-4 sm:p-5 border-b border-purple-500/15 bg-purple-950/10 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 border border-white/20 flex items-center justify-center text-xl shadow-lg shadow-blue-500/20">
+          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-purple-600 via-indigo-600 to-blue-600 border border-purple-400/30 flex items-center justify-center text-xl shadow-lg shadow-purple-500/25">
             ⚡
           </div>
           <div>
@@ -596,6 +611,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
         )}
 
       </div>
+
+      {/* ===================== BOTTOM USER / GUEST FOOTER ===================== */}
+      <BottomRightProfile
+        currentUser={currentUser}
+        soundEnabled={soundEnabled}
+        onToggleSound={onToggleSound}
+        onOpenProfileSettings={onOpenProfileSettings}
+        onOpenStatusPicker={onOpenStatusPicker}
+        onLogout={onLogout}
+        onNavigateToRegister={onNavigateToRegister}
+        onLoginSuccess={onLoginSuccess}
+        isDocked={true}
+      />
 
     </aside>
   );

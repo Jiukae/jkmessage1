@@ -336,7 +336,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
       )}
 
       {/* Header */}
-      <header className="h-16 px-3 sm:px-4 md:px-6 border-b border-white/10 bg-black/20 backdrop-blur-xl flex items-center justify-between shrink-0 z-10">
+      <header className="h-16 px-3 sm:px-4 md:px-6 border-b border-purple-500/15 bg-purple-950/15 backdrop-blur-xl flex items-center justify-between shrink-0 z-10">
         
         {/* Left Side: Mobile Back + Partner/Group Info */}
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
@@ -1010,7 +1010,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
       )}
 
       {/* Message Input Bottom Bar */}
-      <footer className="p-3 sm:p-4 md:p-5 bg-black/20 border-t border-white/10 backdrop-blur-xl shrink-0">
+      <footer className="p-3 sm:p-4 md:p-5 bg-purple-950/15 border-t border-purple-500/15 backdrop-blur-xl shrink-0">
         
         {/* Admin Quick Command Chips */}
         {(conversationId === 'conv_command' || partner?.id === 'bot_command') && (
