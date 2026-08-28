@@ -1,5 +1,24 @@
 export type UserStatusMode = 'online' | 'dnd' | 'offline';
+export type AdminLevel = 1 | 2 | 3 | 4 | 5;
 export type UserRole = 'superadmin' | 'admin' | 'user';
+
+export interface AdminNotice {
+  id: string;
+  creatorId: string;
+  creatorName: string;
+  creatorUsername: string;
+  title: string;
+  content: string;
+  durationStr: string;
+  expiresAt: number;
+  createdAt: number;
+  applicants: {
+    userId: string;
+    username: string;
+    name: string;
+    appliedAt: number;
+  }[];
+}
 
 export interface User {
   id: string;
@@ -11,6 +30,8 @@ export interface User {
   customStatus?: string;
   status: UserStatusMode;
   role?: UserRole;
+  adminLevel?: AdminLevel; // 1: Guest/Member, 2: Moder, 3: Admin, 4: Head Admin, 5: Owner
+  moderAgreedAt?: number; // timestamp when user agreed to terms for Moder
   dndUntil?: number | null; // timestamp when DND expires (null means indefinitely until changed)
   lastSeen: number;
   createdAt: number;

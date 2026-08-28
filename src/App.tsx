@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { User, Conversation, Message, MessageReply, UserStatusMode, FriendRequest, GroupRoom, MessageAttachment } from './types';
+import { User, Conversation, Message, MessageReply, UserStatusMode, FriendRequest, GroupRoom, MessageAttachment, AdminNotice } from './types';
 import { Sidebar } from './components/Sidebar';
 import { ChatArea } from './components/ChatArea';
 import { RegisterPage } from './components/RegisterPage';
@@ -12,6 +12,9 @@ import { StatusPickerModal } from './components/StatusPickerModal';
 import { AddFriendModal } from './components/AddFriendModal';
 import { CreateGroupModal } from './components/CreateGroupModal';
 import { GroupInfoModal } from './components/GroupInfoModal';
+import { NoticeApplyModal } from './components/NoticeApplyModal';
+import { ModerAgreementModal } from './components/ModerAgreementModal';
+import { getAdminLevel } from './utils/roleUtils';
 import { sendBrowserNotification, getNotificationPermission } from './utils/notifications';
 import { sounds } from './utils/audio';
 import {
@@ -76,6 +79,11 @@ export default function App() {
 
   // Broadcast banner
   const [broadcastAlert, setBroadcastAlert] = useState<string | null>(null);
+
+  // Admin Notices & Moders
+  const [activeNotices, setActiveNotices] = useState<AdminNotice[]>([]);
+  const [selectedNoticeForApply, setSelectedNoticeForApply] = useState<AdminNotice | null>(null);
+  const [showModerAgreeModal, setShowModerAgreeModal] = useState(false);
 
   // Modals state
   const [showCreateGroupModal, setShowCreateGroupModal] = useState(false);
@@ -291,8 +299,21 @@ export default function App() {
     }
   }, []);
 
+  // Fetch active admin notices
+  const fetchNotices = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/notices');
+      if (!res.ok) return;
+      const data = await res.json();
+      setActiveNotices(data.notices || []);
+    } catch (e) {
+      console.warn('Notices fetch paused:', e);
+    }
+  }, []);
+
   // Fetch initial data when user changes
   useEffect(() => {
+    fetchNotices();
     if (currentUser?.id) {
       fetchFriends(currentUser.id);
       fetchPendingFriendRequests(currentUser.id);
@@ -302,7 +323,7 @@ export default function App() {
       // Guest mode: fetch user list for directory
       fetchAllUsers('');
     }
-  }, [currentUser, fetchFriends, fetchPendingFriendRequests, fetchConversations, fetchAllUsers]);
+  }, [currentUser, fetchFriends, fetchPendingFriendRequests, fetchConversations, fetchAllUsers, fetchNotices]);
 
   // Load messages when active conversation changes
   useEffect(() => {
@@ -925,7 +946,42 @@ export default function App() {
       )}
 
       {/* Main Glass App Container with purple aura reflection */}
-      <div className="relative z-10 w-full h-full flex bg-[#0c0d18]/75 backdrop-blur-3xl md:border md:border-purple-500/20 md:rounded-3xl shadow-[0_0_80px_rgba(139,92,246,0.18)] overflow-hidden">
+      <div className="relative z-10 w-full h-full flex flex-col bg-[#0c0d18]/75 backdrop-blur-3xl md:border md:border-purple-500/20 md:rounded-3xl shadow-[0_0_80px_rgba(139,92,246,0.18)] overflow-hidden">
+        
+        {/* Active Admin Notice Banner */}
+        {activeNotices.length > 0 && (
+          <div className="shrink-0 bg-gradient-to-r from-amber-500/15 via-purple-500/15 to-blue-500/15 border-b border-white/10 px-4 py-2 flex items-center justify-between gap-3 text-xs backdrop-blur-md">
+            <div className="flex items-center gap-2 min-w-0 overflow-hidden">
+              <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold border border-amber-400/30 shrink-0 flex items-center gap-1">
+                📢 모집 공고
+              </span>
+              <span className="text-white/90 truncate font-medium">
+                {activeNotices[0].content}
+              </span>
+              <span className="text-white/40 text-[10px] shrink-0 hidden sm:inline">
+                (마감: {new Date(activeNotices[0].expiresAt).toLocaleDateString('ko-KR')})
+              </span>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                id="apply-notice-top-btn"
+                type="button"
+                onClick={() => {
+                  if (!currentUser) {
+                    alert('로그인 후 지원하실 수 있습니다.');
+                    return;
+                  }
+                  setSelectedNoticeForApply(activeNotices[0]);
+                }}
+                className="px-3 py-1 bg-amber-500 hover:bg-amber-400 text-black font-bold rounded-lg text-xs transition-colors shadow-sm"
+              >
+                지원하기
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="flex-1 flex overflow-hidden w-full h-full">
         
         {/* ================= MAIN CHAT / CONTENT AREA (LEFT) ================= */}
         <div
@@ -1043,11 +1099,14 @@ export default function App() {
             onOpenAddFriendModal={() => setShowAddFriendModal(true)}
             onOpenCreateGroupModal={() => setShowCreateGroupModal(true)}
             onOpenNewChatModal={() => setShowNewChatModal(true)}
+            onOpenModerAgreement={() => setShowModerAgreeModal(true)}
             onSelectConversation={handleSelectConversation}
             onStartChatWithUser={handleStartChatWithUser}
             onOpenUserDetail={(u) => setSelectedExploreUser(u)}
             onPromptLogin={() => {}}
           />
+        </div>
+
         </div>
 
       </div>
@@ -1167,6 +1226,32 @@ export default function App() {
           setNotificationPermission(getNotificationPermission());
         }}
       />
+
+      {/* Admin Notice Apply Modal */}
+      {selectedNoticeForApply && currentUser && (
+        <NoticeApplyModal
+          notice={selectedNoticeForApply}
+          currentUser={currentUser}
+          onClose={() => setSelectedNoticeForApply(null)}
+          onSuccess={() => {
+            setSelectedNoticeForApply(null);
+            fetchNotices();
+          }}
+        />
+      )}
+
+      {/* Moder Agreement Modal */}
+      {showModerAgreeModal && currentUser && (
+        <ModerAgreementModal
+          currentUser={currentUser}
+          onClose={() => setShowModerAgreeModal(false)}
+          onSuccess={(updatedUser) => {
+            setCurrentUser(updatedUser);
+            localStorage.setItem('id_messenger_user', JSON.stringify(updatedUser));
+            fetchAllUsers(currentUser.id);
+          }}
+        />
+      )}
 
     </div>
   );

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { User } from '../types';
-import { X, Copy, Check, Calendar, MessageSquare, Shield, Clock } from 'lucide-react';
+import { X, Copy, Check, Calendar, MessageSquare, Clock, Shield } from 'lucide-react';
+import { getAdminLevel, getAdminRoleInfo, RoleBadge } from '../utils/roleUtils';
 
 interface UserDetailModalProps {
   user: User;
@@ -23,8 +24,8 @@ export const UserDetailModal: React.FC<UserDetailModalProps> = ({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const isSuper = user.username.toLowerCase() === 'jiukhan0215' || user.role === 'superadmin';
-  const isSubAdmin = user.role === 'admin' && !isSuper;
+  const lvl = getAdminLevel(user);
+  const roleInfo = getAdminRoleInfo(lvl);
 
   const formattedDate = user.createdAt
     ? new Date(user.createdAt).toLocaleDateString('ko-KR', {
@@ -35,8 +36,8 @@ export const UserDetailModal: React.FC<UserDetailModalProps> = ({
     : '최근';
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-md flex items-center justify-center p-3 sm:p-4">
-      <div className="w-full max-w-sm max-h-[92vh] flex flex-col bg-[#121622]/95 border border-white/15 rounded-3xl shadow-2xl backdrop-blur-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150">
+      <div className="w-full max-w-sm max-h-[92vh] flex flex-col bg-[#121622]/95 border border-white/15 rounded-3xl shadow-2xl backdrop-blur-2xl overflow-hidden animate-in zoom-in-95 duration-200">
         
         {/* Top Banner */}
         <div className={`shrink-0 h-24 bg-gradient-to-r ${user.avatarBg || 'from-blue-600 to-purple-600'} relative p-4 flex justify-end border-b border-white/10`}>
@@ -66,19 +67,9 @@ export const UserDetailModal: React.FC<UserDetailModalProps> = ({
           </div>
 
           <div className="space-y-1">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <h3 className="text-xl font-bold text-white">{user.name}</h3>
-              {isSuper ? (
-                <span className="px-2 py-0.5 text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-lg flex items-center gap-1">
-                  <Shield className="w-3 h-3" />
-                  <span>최고 관리자</span>
-                </span>
-              ) : isSubAdmin ? (
-                <span className="px-2 py-0.5 text-xs font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30 rounded-lg flex items-center gap-1">
-                  <Shield className="w-3 h-3" />
-                  <span>부관리자</span>
-                </span>
-              ) : null}
+              <RoleBadge user={user} size="md" />
             </div>
 
             <div className="flex items-center gap-2">
@@ -107,6 +98,16 @@ export const UserDetailModal: React.FC<UserDetailModalProps> = ({
 
           {/* Details list */}
           <div className="mt-4 space-y-2 text-xs text-white/70">
+            <div className="flex items-center justify-between p-2.5 bg-white/5 rounded-2xl border border-white/10 backdrop-blur-sm">
+              <span className="flex items-center gap-2 text-white/50">
+                <Shield className="w-4 h-4 text-blue-400" />
+                회원 권한
+              </span>
+              <span className="font-semibold text-white/90">
+                {roleInfo.icon} {roleInfo.title}
+              </span>
+            </div>
+
             <div className="flex items-center justify-between p-2.5 bg-white/5 rounded-2xl border border-white/10 backdrop-blur-sm">
               <span className="flex items-center gap-2 text-white/50">
                 <Clock className="w-4 h-4 text-blue-400" />

@@ -15,6 +15,7 @@ import {
 } from "./src/serverFirestore";
 
 export type UserStatusMode = 'online' | 'dnd' | 'offline';
+export type AdminLevel = 1 | 2 | 3 | 4 | 5;
 
 interface UserRecord {
   id: string;
@@ -26,9 +27,32 @@ interface UserRecord {
   customStatus?: string;
   status: UserStatusMode;
   role?: 'superadmin' | 'admin' | 'user';
+  adminLevel?: AdminLevel;
+  moderAgreedAt?: number;
   dndUntil?: number | null; // expiration timestamp or null for indefinite
   lastSeen: number;
   createdAt: number;
+}
+
+interface NoticeApplicant {
+  userId: string;
+  username: string;
+  name: string;
+  appliedAt: number;
+  reason?: string;
+}
+
+interface NoticeRecord {
+  id: string;
+  creatorId: string;
+  creatorName: string;
+  creatorUsername: string;
+  title: string;
+  content: string;
+  durationStr: string;
+  expiresAt: number;
+  createdAt: number;
+  applicants: NoticeApplicant[];
 }
 
 interface FriendRequestRecord {
@@ -86,7 +110,7 @@ if (!fs.existsSync(UPLOADS_DIR)) {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 }
 
-// Initial seed data - Super Admin jiukhan0215
+// Initial seed data - Owner (Level 5) jiukhan0215
 const initialUsers: UserRecord[] = [
   {
     id: "user_jiukhan0215",
@@ -95,17 +119,19 @@ const initialUsers: UserRecord[] = [
     password: "password123",
     avatarBg: "from-amber-500 to-red-600",
     avatarEmoji: "👑",
-    customStatus: "⚡ JK Message 시스템 총괄 최고 관리자",
+    customStatus: "⚡ JK Message 시스템 총괄 최고 관리자 (Owner)",
     status: "online",
     role: "superadmin",
+    adminLevel: 5,
     lastSeen: Date.now(),
-    createdAt: Date.now() - 86400000 * 10,
+    createdAt: Date.now() - 86400000 * 30, // 30 days ago
   },
 ];
 
 const initialFriendRequests: FriendRequestRecord[] = [];
 const initialMessages: MessageRecord[] = [];
 const initialGroups: GroupRoomRecord[] = [];
+const initialNotices: NoticeRecord[] = [];
 
 // Special Command Bot entity
 const COMMAND_BOT: UserRecord = {
@@ -120,14 +146,37 @@ const COMMAND_BOT: UserRecord = {
   createdAt: 0,
 };
 
+export function getAdminLevel(user?: UserRecord | null): AdminLevel {
+  if (!user) return 1;
+  if (user.username.toLowerCase() === "jiukhan0215") return 5;
+  if (user.adminLevel && user.adminLevel >= 1 && user.adminLevel <= 5) {
+    return user.adminLevel as AdminLevel;
+  }
+  if (user.role === "superadmin") return 5;
+  if (user.role === "admin") return 3;
+  return 1;
+}
+
+export function getAdminRoleName(level: AdminLevel): string {
+  switch (level) {
+    case 5: return "Owner (최고 소유자)";
+    case 4: return "Head Admin (총괄 관리자)";
+    case 3: return "Admin (관리자)";
+    case 2: return "Moder (모더레이터)";
+    case 1:
+    default:
+      return "Guest/Member (일반 유저)";
+  }
+}
+
 function isSuperAdmin(user?: UserRecord | null): boolean {
   if (!user) return false;
-  return user.username.toLowerCase() === "jiukhan0215" || user.role === "superadmin";
+  return getAdminLevel(user) === 5;
 }
 
 function isAdmin(user?: UserRecord | null): boolean {
   if (!user) return false;
-  return isSuperAdmin(user) || user.role === "admin";
+  return getAdminLevel(user) >= 2;
 }
 
 interface BanRecord {
@@ -143,6 +192,7 @@ interface DBState {
   messages: MessageRecord[];
   groups: GroupRoomRecord[];
   bans?: BanRecord[];
+  notices?: NoticeRecord[];
   serverMaintenance?: {
     enabled: boolean;
     message: string;
@@ -190,6 +240,7 @@ function loadDB(): DBState {
           messages: Array.isArray(data.messages) ? data.messages : initialMessages,
           groups: Array.isArray(data.groups) ? data.groups : initialGroups,
           bans: Array.isArray(data.bans) ? data.bans : [],
+          notices: Array.isArray(data.notices) ? data.notices : initialNotices,
           serverMaintenance: data.serverMaintenance || { enabled: false, message: '', startedAt: 0 },
         };
       }
@@ -203,6 +254,7 @@ function loadDB(): DBState {
     messages: [...initialMessages],
     groups: [...initialGroups],
     bans: [],
+    notices: [...initialNotices],
     serverMaintenance: { enabled: false, message: '', startedAt: 0 },
   };
 }
@@ -452,20 +504,21 @@ async function startServer() {
     const parts = cmd.trim().split(' ').filter(Boolean);
     const main = parts[0]?.toLowerCase() || '';
     const args = parts.slice(1);
-    const userIsSuper = isSuperAdmin(adminUser);
+    const userLevel = getAdminLevel(adminUser);
 
-    // 1. HELP COMMAND
+    // 1. HELP COMMAND (/help, /도움말, /?)
     if (main === '/help' || main === '도움말' || main === '/?' || !main) {
-      if (userIsSuper) {
+      if (userLevel === 5) {
+        // Level 5: Owner
         return [
-          `👑 **[JK Message 시스템 총괄 관리자 콘솔]** (접속자: @${adminUser.username} | 최고 관리자)`,
+          `👑 **[JK Message 시스템 최고 소유자(Owner) 콘솔]** (접속자: @${adminUser.username} | Level 5)`,
           `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-          `[ 👑 어드민 권한 관리 ]`,
-          `• \`/op <아이디>\` (또는 \`/어드민지급\`) : 대상 유저에게 부관리자(어드민) 권한 지급`,
-          `• \`/deop <아이디>\` (또는 \`/어드민회수\`) : 대상 유저의 부관리자 권한 회수`,
-          `• \`/adminlist\` 또는 \`어드민목록\` : 전체 관리자 및 부관리자 명단 조회`,
+          `[ 👑 권한 및 공고 관리 ]`,
+          `• \`/op <아이디> <1-5>\` : 대상 유저의 어드민 권한 레벨을 지정 (1:Guest, 2:Moder, 3:Admin, 4:HeadAdmin, 5:Owner)`,
+          `• \`/notice <기간(예:1d, 12h)> <텍스트>\` : 어드민 모집 공고 발행 (유저가 버튼으로 지원 가능)`,
+          `• \`/adminlist\` 또는 \`어드민목록\` : 1~5레벨 전체 관리자 명단 조회`,
           ``,
-          `[ 🚫 계정 제재 & 보안 (최고 관리자 전용) ]`,
+          `[ 🚫 계정 제재 & 보안 ]`,
           `• \`/ban <아이디> [사유]\` : 대상 유저 영구 밴 & 즉시 강제 퇴장`,
           `• \`/timeban <아이디> <시간> [사유]\` : 일정 기간 임시 밴 (예: \`/timeban user1 30m 욕설\`, \`2h\`, \`1d\`)`,
           `• \`/unban <아이디>\` : 제재된 유저 밴 해제 (차단 해제)`,
@@ -473,9 +526,9 @@ async function startServer() {
           ``,
           `[ 🛠️ 시스템 운영 & 제어 ]`,
           `• \`/broadcast <공지내용>\` : 전체 접속자에게 실시간 긴급 팝업 공지 전송`,
+          `• \`/maintenance <on|off> [메시지]\` : 서버 긴급 점검 모드 가동/종료`,
           `• \`/kick <아이디>\` : 대상 유저의 실시간 소켓 연결 강제 종료`,
           `• \`/setname <아이디> <새이름>\` : 관리자 권한으로 특정 유저 닉네임 강제 변경`,
-          `• \`/maintenance <on|off> [메시지]\` : 서버 긴급 점검 모드 가동/종료`,
           `• \`/wipe <all|groups>\` : 시스템 전체 또는 단체방 메시지 대량 일괄 정화`,
           `• \`/users\` 또는 \`유저목록\` : 등록된 모든 사용자 목록 및 실시간 상태 조회`,
           `• \`/stats\` 또는 \`서버상태\` : 실시간 접속자, 소켓, DB 및 메시지 통계`,
@@ -484,40 +537,95 @@ async function startServer() {
           `• \`/db\` : Firestore 클라우드 동기화 상태 점검`,
           `• \`/clear\` : 관리자 명령어 대화 내역 초기화`,
           `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-          `💡 팁: 아래 빠른 실행 버튼을 누르거나 채팅창에 명령어를 직접 입력하세요.`,
         ].join('\n');
-      } else {
-        // Sub-Admin (부관리자 - 밴/점검/OP 제외된 안전한 권한)
+      } else if (userLevel === 4) {
+        // Level 4: Head Admin
         return [
-          `🛡️ **[JK Message 부관리자(어드민) 콘솔]** (접속자: @${adminUser.username} | 부관리자)`,
+          `💎 **[JK Message 총괄 관리자(Head Admin) 콘솔]** (접속자: @${adminUser.username} | Level 4)`,
           `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-          `[ 🛠️ 부관리자 사용 가능 명령어 ]`,
-          `• \`/broadcast <공지내용>\` : 전체 접속자에게 실시간 긴급 팝업 공지 전송`,
+          `[ 🛠️ Head Admin 사용 가능 명령어 ]`,
+          `• \`/ban <아이디> [사유]\` : 비매너 유저 영구 밴 (※ Level 4, 5는 대상 불가)`,
+          `• \`/timeban <아이디> <시간> [사유]\` : 임시 밴 조치 (※ Level 4, 5는 대상 불가)`,
+          `• \`/unban <아이디>\` : 밴 해제`,
+          `• \`/banlist\` : 밴 목록 조회`,
+          `• \`/broadcast <공지내용>\` : 실시간 긴급 공지 전송`,
+          `• \`/kick <아이디>\` : 비매너 유저 강제 퇴장`,
+          `• \`/setname <아이디> <새이름>\` : 닉네임 강제 변경`,
+          `• \`/users\` : 전체 유저 목록 조회`,
+          `• \`/stats\` : 시스템 상태 통계`,
+          `• \`/info <아이디>\` : 유저 정보 조회`,
+          `• \`/adminlist\` : 관리자 명단 조회`,
+          `• \`/status <online|dnd|offline> [메시지]\` : 관리자 상태 변경`,
+          `• \`/clear\` : 화면 초기화`,
+          `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+          `⚠️ ※ 점검 모드(/maintenance) 및 최고관리자/총괄관리자 대상 밴은 불가능합니다.`,
+        ].join('\n');
+      } else if (userLevel === 3) {
+        // Level 3: Admin
+        return [
+          `🛡️ **[JK Message 관리자(Admin) 콘솔]** (접속자: @${adminUser.username} | Level 3)`,
+          `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+          `[ 🛠️ Admin 사용 가능 명령어 ]`,
           `• \`/kick <아이디>\` : 비매너 유저의 실시간 소켓 연결 강제 종료`,
           `• \`/setname <아이디> <새이름>\` : 부적절한 유저 닉네임 강제 수정`,
-          `• \`/users\` 또는 \`유저목록\` : 전체 회원 목록 및 실시간 접속 상태 확인`,
-          `• \`/stats\` 또는 \`서버상태\` : 서버 실시간 연결 및 시스템 현황 조회`,
+          `• \`/users\` : 전체 회원 목록 및 실시간 접속 상태 확인`,
+          `• \`/stats\` : 서버 실시간 연결 및 시스템 현황 조회`,
           `• \`/info <아이디>\` : 특정 유저의 상세 정보 조회`,
-          `• \`/adminlist\` 또는 \`어드민목록\` : 관리자 및 부관리자 명단 확인`,
-          `• \`/status <online|dnd|offline> [메시지]\` : 내 관리자 상태 및 상태메시지 즉시 변경`,
+          `• \`/adminlist\` : 관리자 명단 확인`,
+          `• \`/status <online|dnd|offline> [메시지]\` : 내 관리자 상태 즉시 변경`,
           `• \`/clear\` : 명령어 터미널 화면 대화 내역 초기화`,
           `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-          `⚠️ ※ 일반 관리자는 계정 밴/타임밴, 점검 모드, 어드민 권한 지급 권한이 제외되어 있습니다. (최고 관리자 전용)`,
+          `⚠️ ※ 밴, 타임밴, 점검, 공지(broadcast)는 권한에 포함되지 않습니다.`,
+        ].join('\n');
+      } else if (userLevel === 2) {
+        // Level 2: Moder
+        return [
+          `🔰 **[JK Message 모더레이터(Moder) 콘솔]** (접속자: @${adminUser.username} | Level 2)`,
+          `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+          `[ 🛠️ Moder 사용 가능 명령어 ]`,
+          `• \`/users\` : 전체 회원 목록 및 실시간 접속 상태 확인`,
+          `• \`/stats\` : 서버 실시간 연결 및 시스템 현황 조회`,
+          `• \`/info <아이디>\` : 특정 유저의 상세 정보 조회`,
+          `• \`/status <online|dnd|offline> [메시지]\` : 내 상태 및 상태메시지 변경`,
+          `• \`/clear\` : 화면 초기화`,
+          `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+        ].join('\n');
+      } else {
+        // Level 1: Guest / Member
+        return [
+          `💬 **[JK Message 일반 유저 콘솔]** (접속자: @${adminUser.username} | Level 1)`,
+          `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+          `• \`/help\` : 도움말 확인`,
+          `• \`/clear\` : 화면 초기화`,
+          `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+          `💡 가입 10일 후 약관에 동의하면 Level 2 (Moder)로 승급하여 /users, /stats 등을 사용할 수 있습니다.`,
         ].join('\n');
       }
     }
 
-    // 2. ADMIN GRANT (/op, /어드민지급, /grantadmin)
+    // 2. OP COMMAND (/op, /어드민지급) - Owner Only
+    // Syntax: /op <아이디> <번호 (1-5)>
     if (main === '/op' || main === '/어드민지급' || main === '어드민지급' || main === '/grantadmin' || main === 'grantadmin') {
-      if (!userIsSuper) {
-        return `⛔ **[권한 제한]** 어드민 권한 지급은 최고 관리자(@jiukhan0215)만 사용할 수 있습니다.`;
+      if (userLevel < 5) {
+        return `⛔ **[권한 제한]** \`/op\` 권한 레벨 지정은 시스템 최고 소유자(Owner - Level 5)만 사용할 수 있습니다.`;
       }
       const targetUsername = args[0]?.replace(/^@/, '').toLowerCase();
-      if (!targetUsername) {
-        return `⚠️ 사용법: \`/op <유저아이디>\` (예: \`/op user1\`)`;
+      const levelArg = parseInt(args[1], 10);
+
+      if (!targetUsername || isNaN(levelArg) || levelArg < 1 || levelArg > 5) {
+        return [
+          `⚠️ 사용법: \`/op <아이디> <레벨(1-5)>\``,
+          `• 1: Guest (일반 회원 - /help, /clear)`,
+          `• 2: Moder (모더레이터 - /users, /stats, /info, /status)`,
+          `• 3: Admin (관리자 - /kick, /setname, /users, /stats, /info 등)`,
+          `• 4: Head Admin (총괄 관리자 - 점검 빼고 밴 등 모두 가능)`,
+          `• 5: Owner (소유자 - 모든 권한)`,
+          `예시: \`/op user1 3\` (user1에게 Admin 권한 지급)`,
+        ].join('\n');
       }
-      if (targetUsername === 'jiukhan0215') {
-        return `ℹ️ '@jiukhan0215' 님은 이미 시스템 최고 관리자입니다.`;
+
+      if (targetUsername === 'jiukhan0215' && levelArg !== 5) {
+        return `❌ 최고 소유자(@jiukhan0215)의 권한 레벨은 낮출 수 없습니다.`;
       }
 
       const target = db.users.find((u) => u.username.toLowerCase() === targetUsername);
@@ -525,11 +633,16 @@ async function startServer() {
         return `❌ '@${targetUsername}' 유저를 찾을 수 없습니다. 등록된 아이디를 확인해주세요.`;
       }
 
-      if (target.role === 'admin') {
-        return `ℹ️ '@${target.username}' (${target.name}) 님은 이미 부관리자(어드민) 권한을 보유하고 있습니다.`;
+      const prevLevel = getAdminLevel(target);
+      target.adminLevel = levelArg as AdminLevel;
+      if (levelArg === 5) {
+        target.role = 'superadmin';
+      } else if (levelArg >= 2) {
+        target.role = 'admin';
+      } else {
+        target.role = 'user';
       }
 
-      target.role = 'admin';
       saveDB(db, { type: 'user', item: target });
 
       // Broadcast profile update so all clients see the badge immediately
@@ -548,92 +661,152 @@ async function startServer() {
         type: "system:broadcast",
         payload: {
           id: `admin_grant_${Date.now()}`,
-          title: "👑 관리자(어드민) 임명 알림",
-          message: `최고 관리자로부터 JK Message 부관리자(어드민) 권한이 지급되었습니다!\n대화 목록에서 [⚡ 명령어 터미널]을 확인하고 관리자 기능을 이용해보세요.`,
+          title: `👑 관리자 권한 변경 알림 [Level ${levelArg}]`,
+          message: `Owner(@${adminUser.username})님에 의해 회원님의 권한이 [Level ${levelArg}: ${getAdminRoleName(levelArg as AdminLevel)}](으)로 설정되었습니다.`,
           senderName: adminUser.name,
           timestamp: Date.now(),
         }
       });
 
-      return `👑 **[어드민 권한 지급 완료]**\n대상: **${target.name}** (@${target.username})\n부관리자(어드민) 권한이 성공적으로 지급되었습니다.\n해당 유저는 이제 명령어 터미널을 열어 공지, 강퇴, 닉네임 수정, 유저 조회를 수행할 수 있습니다. (※ 밴/타임밴/점검 등 위험 권한은 자동 제외됩니다.)`;
+      return `👑 **[권한 레벨 설정 완료]**\n대상: **${target.name}** (@${target.username})\n권한 변경: Level ${prevLevel} ➔ **Level ${levelArg} (${getAdminRoleName(levelArg as AdminLevel)})**`;
     }
 
-    // 3. ADMIN REVOKE (/deop, /어드민회수, /revokeadmin)
-    if (main === '/deop' || main === '/어드민회수' || main === '어드민회수' || main === '/revokeadmin' || main === 'revokeadmin') {
-      if (!userIsSuper) {
-        return `⛔ **[권한 제한]** 어드민 권한 회수는 최고 관리자(@jiukhan0215)만 사용할 수 있습니다.`;
+    // 3. NOTICE COMMAND (/notice, /모집, /공고) - Owner Only
+    // Syntax: /notice <날짜(예:1d, 12h, 30m)> <텍스트>
+    if (main === '/notice' || main === '/모집' || main === '모집' || main === '공고') {
+      if (userLevel < 5) {
+        return `⛔ **[권한 제한]** 어드민 모집 공고(/notice)는 Owner(Level 5) 전용 명령어입니다.`;
       }
-      const targetUsername = args[0]?.replace(/^@/, '').toLowerCase();
-      if (!targetUsername) {
-        return `⚠️ 사용법: \`/deop <유저아이디>\` (예: \`/deop user1\`)`;
-      }
-      if (targetUsername === 'jiukhan0215') {
-        return `❌ 최고 관리자의 권한은 회수할 수 없습니다.`;
+      const durationStr = args[0]?.toLowerCase();
+      const content = args.slice(1).join(' ').trim();
+
+      if (!durationStr || !content) {
+        return [
+          `⚠️ 사용법: \`/notice <기간(예: 1d, 12h, 30m)> <모집 안내 텍스트>\``,
+          `예시: \`/notice 1d 제3기 JK Message 어드민을 모집합니다! 아래 지원 버튼을 눌러 신청해주세요.\``,
+        ].join('\n');
       }
 
-      const target = db.users.find((u) => u.username.toLowerCase() === targetUsername);
-      if (!target) {
-        return `❌ '@${targetUsername}' 유저를 찾을 수 없습니다.`;
+      let durationMs = 0;
+      if (durationStr.endsWith('s') || durationStr.endsWith('초')) {
+        durationMs = parseInt(durationStr, 10) * 1000;
+      } else if (durationStr.endsWith('m') || durationStr.endsWith('분')) {
+        durationMs = parseInt(durationStr, 10) * 60 * 1000;
+      } else if (durationStr.endsWith('h') || durationStr.endsWith('시간')) {
+        durationMs = parseInt(durationStr, 10) * 3600 * 1000;
+      } else if (durationStr.endsWith('d') || durationStr.endsWith('일')) {
+        durationMs = parseInt(durationStr, 10) * 86400 * 1000;
+      } else {
+        durationMs = (parseInt(durationStr, 10) || 1) * 86400 * 1000; // default days
       }
 
-      if (target.role !== 'admin') {
-        return `ℹ️ '@${target.username}' 님은 관리자 권한을 가지고 있지 않습니다.`;
+      if (isNaN(durationMs) || durationMs <= 0) {
+        return `⚠️ 유효한 모집 기간을 입력해주세요. (예: 1d, 12h, 2d, 30m)`;
       }
 
-      target.role = 'user';
-      saveDB(db, { type: 'user', item: target });
+      const expiresAt = Date.now() + durationMs;
+      const expiresStr = new Date(expiresAt).toLocaleString('ko-KR');
 
-      const { password: _, ...safeUser } = target;
+      if (!db.notices) db.notices = [];
+      const newNotice: NoticeRecord = {
+        id: `notice_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        creatorId: adminUser.id,
+        creatorName: adminUser.name,
+        creatorUsername: adminUser.username,
+        title: "👑 어드민(Admin) 모집 공고",
+        content,
+        durationStr,
+        expiresAt,
+        createdAt: Date.now(),
+        applicants: [],
+      };
+
+      db.notices.push(newNotice);
+      saveDB(db);
+
+      // Broadcast popup announcement to all online users
+      const broadcastPayload = JSON.stringify({
+        type: "system:broadcast",
+        payload: {
+          id: newNotice.id,
+          title: `📢 [어드민 모집 공고] ${expiresStr}까지`,
+          message: `${content}\n\n👉 지원을 원하시면 화면 상단의 [어드민 모집 공고] 버튼을 눌러 지원 신청서를 전송하세요!`,
+          senderName: adminUser.name,
+          timestamp: Date.now(),
+        }
+      });
+
       for (const client of wss.clients) {
         if (client.readyState === WebSocket.OPEN) {
-          client.send(JSON.stringify({
-            type: "user:profile_updated",
-            payload: { user: safeUser },
-          }));
+          client.send(broadcastPayload);
         }
       }
 
-      return `✨ **[어드민 권한 회수 완료]**\n@${target.username} (${target.name}) 님의 부관리자 권한이 회수되어 일반 유저 등급으로 복구되었습니다.`;
-    }
-
-    // 4. ADMIN LIST (/adminlist, /어드민목록)
-    if (main === '/adminlist' || main === '어드민목록' || main === '관리자목록') {
-      const superAdmins = db.users.filter(u => isSuperAdmin(u));
-      const subAdmins = db.users.filter(u => u.role === 'admin' && !isSuperAdmin(u));
-
-      const superList = superAdmins.map((u, i) => `  ${i + 1}. 👑 **${u.name}** (@${u.username}) [최고 관리자]`).join('\n');
-      const subList = subAdmins.length > 0
-        ? subAdmins.map((u, i) => `  ${i + 1}. 🛡️ **${u.name}** (@${u.username}) [부관리자]`).join('\n')
-        : '  (현재 임명된 부관리자가 없습니다.)';
-
       return [
-        `👑 **[JK Message 시스템 관리자 명단]**`,
+        `📢 **[어드민 모집 공고 발행 완료]**`,
         `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-        `[ 최고 관리자 (Super Admin) ]`,
-        superList,
-        ``,
-        `[ 부관리자 (Sub Admin) ]`,
-        subList,
+        `• 모집 기한: **${expiresStr} 까지 (${durationStr})**`,
+        `• 공고 내용: "${content}"`,
         `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-        userIsSuper ? `💡 부관리자 임명: \`/op <아이디>\` | 회수: \`/deop <아이디>\`` : `💡 관리자 문의는 최고 관리자에게 요청하세요.`,
+        `✨ 모든 접속자에게 공고가 전달되었으며, 사용자들이 지원 버튼을 누르면 이 명령어 터미널로 지원자 알림이 실시간 수신됩니다.`,
+        `💡 지원자가 모이면 \`/makegroup\` 또는 수동 단체방을 만들어 심사 후 \`/op <아이디> 3\`을 입력하세요.`,
       ].join('\n');
     }
 
-    // 5. BAN COMMAND (/ban, 밴, 차단) - Super Admin Only
+    // 4. ADMIN LIST (/adminlist, /어드민목록) - Level 2+
+    if (main === '/adminlist' || main === '어드민목록' || main === '관리자목록') {
+      if (userLevel < 2) {
+        return `⛔ **[권한 제한]** 관리자 명단 조회는 Level 2 (Moder) 이상만 사용할 수 있습니다.`;
+      }
+
+      const l5 = db.users.filter(u => getAdminLevel(u) === 5);
+      const l4 = db.users.filter(u => getAdminLevel(u) === 4);
+      const l3 = db.users.filter(u => getAdminLevel(u) === 3);
+      const l2 = db.users.filter(u => getAdminLevel(u) === 2);
+
+      const formatList = (users: UserRecord[], badge: string) => {
+        if (users.length === 0) return '  (없음)';
+        return users.map((u, i) => `  ${i + 1}. ${badge} **${u.name}** (@${u.username})`).join('\n');
+      };
+
+      return [
+        `👑 **[JK Message 시스템 관리자 계층 명단]**`,
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+        `[ Level 5: Owner (최고 소유자) ]`,
+        formatList(l5, '👑'),
+        ``,
+        `[ Level 4: Head Admin (총괄 관리자) ]`,
+        formatList(l4, '💎'),
+        ``,
+        `[ Level 3: Admin (관리자) ]`,
+        formatList(l3, '🛡️'),
+        ``,
+        `[ Level 2: Moder (모더레이터) ]`,
+        formatList(l2, '🔰'),
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+        userLevel === 5 ? `💡 권한 지정: \`/op <아이디> <1-5>\` | 공고: \`/notice <기간> <내용>\`` : '',
+      ].filter(Boolean).join('\n');
+    }
+
+    // 5. BAN COMMAND (/ban, 밴, 차단) - Level 4, 5 Only
     if (main === '/ban' || main === '밴' || main === '차단') {
-      if (!userIsSuper) {
-        return `⛔ **[권한 제한]** 계정 영구 밴(차단) 권한은 최고 관리자(@jiukhan0215) 전용입니다.\n부관리자는 밴 명령을 실행할 수 없습니다.`;
+      if (userLevel < 4) {
+        return `⛔ **[권한 제한]** 영구 밴(차단) 권한은 Level 4 (Head Admin) 및 Level 5 (Owner) 전용입니다.`;
       }
       const targetUsername = args[0]?.replace(/^@/, '').toLowerCase();
       const reason = args.slice(1).join(' ').trim() || '관리자 권한으로 영구 차단되었습니다.';
       if (!targetUsername) {
         return `⚠️ 사용법: \`/ban <유저아이디> [사유]\` (예: \`/ban user1 욕설 및 도배\`)`;
       }
-      if (targetUsername === 'jiukhan0215') {
-        return `❌ 최고 관리자 계정은 밴할 수 없습니다.`;
-      }
 
       const target = db.users.find((u) => u.username.toLowerCase() === targetUsername);
+      const targetLevel = target ? getAdminLevel(target) : 1;
+
+      // Level 4/5 immunity: Head Admin cannot ban Level 4 or 5
+      if (targetLevel >= 4) {
+        return `❌ **[보안 규칙]** Head Admin (Level 4) 및 Owner (Level 5) 대상은 밴/차단할 수 없습니다.`;
+      }
+
       if (!db.bans) db.bans = [];
       const existingIdx = db.bans.findIndex((b) => b.username.toLowerCase() === targetUsername);
       if (existingIdx !== -1) {
@@ -666,10 +839,10 @@ async function startServer() {
       return `🚫 **[영구 밴 조치 완료]**\n대상: @${targetUsername}\n사유: "${reason}"\n해당 계정은 즉시 접속이 차단되며 로그인할 수 없습니다.`;
     }
 
-    // 6. TIMEBAN COMMAND (/timeban, 타임밴, 임시차단) - Super Admin Only
+    // 6. TIMEBAN COMMAND (/timeban, 타임밴, 임시차단) - Level 4, 5 Only
     if (main === '/timeban' || main === '타임밴' || main === '임시차단') {
-      if (!userIsSuper) {
-        return `⛔ **[권한 제한]** 타임밴(임시 차단) 권한은 최고 관리자(@jiukhan0215) 전용입니다.\n부관리자는 타임밴 명령을 실행할 수 없습니다.`;
+      if (userLevel < 4) {
+        return `⛔ **[권한 제한]** 타임밴(임시 차단) 권한은 Level 4 (Head Admin) 및 Level 5 (Owner) 전용입니다.`;
       }
       const targetUsername = args[0]?.replace(/^@/, '').toLowerCase();
       const durationStr = args[1]?.toLowerCase();
@@ -678,8 +851,13 @@ async function startServer() {
       if (!targetUsername || !durationStr) {
         return `⚠️ 사용법: \`/timeban <아이디> <시간(예: 30m, 2h, 1d)> [사유]\`\n(예: \`/timeban user1 1h 비매너 행위\`)`;
       }
-      if (targetUsername === 'jiukhan0215') {
-        return `❌ 최고 관리자 계정은 타임밴할 수 없습니다.`;
+
+      const target = db.users.find((u) => u.username.toLowerCase() === targetUsername);
+      const targetLevel = target ? getAdminLevel(target) : 1;
+
+      // Level 4/5 immunity: Head Admin cannot timeban Level 4 or 5
+      if (targetLevel >= 4) {
+        return `❌ **[보안 규칙]** Head Admin (Level 4) 및 Owner (Level 5) 대상은 타임밴할 수 없습니다.`;
       }
 
       let durationMs = 0;
@@ -710,7 +888,6 @@ async function startServer() {
         db.bans.push({ username: targetUsername, reason, bannedAt: Date.now(), bannedUntil });
       }
 
-      const target = db.users.find((u) => u.username.toLowerCase() === targetUsername);
       if (target) {
         const sockets = userSockets.get(target.id);
         if (sockets && sockets.size > 0) {
@@ -734,14 +911,14 @@ async function startServer() {
       return `⏳ **[타임밴 적용 완료]**\n대상: @${targetUsername}\n해제 예정: ${untilDateStr}\n사유: "${reason}"`;
     }
 
-    // 7. UNBAN COMMAND (/unban, 밴해제, 차단해제) - Super Admin Only
+    // 7. UNBAN COMMAND (/unban, 밴해제) - Level 4, 5 Only
     if (main === '/unban' || main === '밴해제' || main === '차단해제') {
-      if (!userIsSuper) {
-        return `⛔ **[권한 제한]** 밴 해제 권한은 최고 관리자(@jiukhan0215) 전용입니다.`;
+      if (userLevel < 4) {
+        return `⛔ **[권한 제한]** 밴 해제 권한은 Level 4 (Head Admin) 및 Level 5 (Owner) 전용입니다.`;
       }
       const targetUsername = args[0]?.replace(/^@/, '').toLowerCase();
       if (!targetUsername) {
-        return `⚠️ 사용법: \`/unban <유저아이디>\` (예: \`/unban user1\`)`;
+        return `⚠️ 사용법: \`/unban <유저아이디>\``;
       }
       if (!db.bans) db.bans = [];
       const beforeCount = db.bans.length;
@@ -754,10 +931,10 @@ async function startServer() {
       return `✨ **[밴 해제 완료]**\n@${targetUsername} 님의 차단이 성공적으로 해제되었습니다. 이제 정상적으로 로그인 및 이용이 가능합니다.`;
     }
 
-    // 8. BANLIST COMMAND (/banlist, 밴목록) - Super Admin Only
+    // 8. BANLIST COMMAND (/banlist, 밴목록) - Level 4, 5 Only
     if (main === '/banlist' || main === '밴목록' || main === '차단목록') {
-      if (!userIsSuper) {
-        return `⛔ **[권한 제한]** 밴 목록 조회는 최고 관리자(@jiukhan0215) 전용입니다.`;
+      if (userLevel < 4) {
+        return `⛔ **[권한 제한]** 밴 목록 조회는 Level 4 (Head Admin) 및 Level 5 (Owner) 전용입니다.`;
       }
       if (!db.bans || db.bans.length === 0) {
         return `🛡️ 현재 차단되거나 제재를 받고 있는 사용자가 없습니다.`;
@@ -778,10 +955,10 @@ async function startServer() {
       ].join('\n');
     }
 
-    // 9. MAINTENANCE COMMAND (/maintenance, 점검) - Super Admin Only
+    // 9. MAINTENANCE COMMAND (/maintenance, 점검) - Owner Only (Level 5)
     if (main === '/maintenance' || main === '점검' || main === '점검모드') {
-      if (!userIsSuper) {
-        return `⛔ **[권한 제한]** 서버 점검 모드는 최고 관리자(@jiukhan0215)만 설정할 수 있습니다.`;
+      if (userLevel < 5) {
+        return `⛔ **[권한 제한]** 서버 점검 모드는 시스템 최고 소유자(Owner - Level 5) 전용입니다. (Head Admin 사용 불가)`;
       }
       const mode = args[0]?.toLowerCase();
       const message = args.slice(1).join(' ').trim() || '서버 정기 점검 및 안정화 작업이 진행 중입니다.';
@@ -794,7 +971,6 @@ async function startServer() {
         };
         saveDB(db);
 
-        // Notify all clients
         for (const client of wss.clients) {
           if (client.readyState === WebSocket.OPEN) {
             client.send(JSON.stringify({
@@ -841,10 +1017,10 @@ async function startServer() {
       }
     }
 
-    // 10. WIPE COMMAND (/wipe, 대화정리) - Super Admin Only
+    // 10. WIPE COMMAND (/wipe, 대화정리) - Owner Only
     if (main === '/wipe' || main === '대화정리' || main === '정화') {
-      if (!userIsSuper) {
-        return `⛔ **[권한 제한]** 메시지 대량 정화 권한은 최고 관리자(@jiukhan0215) 전용입니다.`;
+      if (userLevel < 5) {
+        return `⛔ **[권한 제한]** 메시지 대량 정화 권한은 Owner(Level 5) 전용입니다.`;
       }
       const scope = args[0]?.toLowerCase() || 'all';
       if (scope === 'all' || scope === '전체') {
@@ -862,10 +1038,10 @@ async function startServer() {
       }
     }
 
-    // 11. DB STATUS (/db, 디비) - Super Admin Only
+    // 11. DB STATUS (/db, 디비) - Owner Only
     if (main === '/db' || main === '디비') {
-      if (!userIsSuper) {
-        return `⛔ **[권한 제한]** 데이터베이스 상세 현황은 최고 관리자(@jiukhan0215) 전용입니다.`;
+      if (userLevel < 5) {
+        return `⛔ **[권한 제한]** 데이터베이스 상세 현황은 Owner(Level 5) 전용입니다.`;
       }
       const hasFirestore = !!getFirestoreClient();
       return [
@@ -876,23 +1052,27 @@ async function startServer() {
         `• 저장된 메시지 수: ${db.messages.length}개`,
         `• 저장된 단체방 수: ${db.groups.length}개`,
         `• 저장된 친구요청 수: ${db.friendRequests.length}개`,
+        `• 등록된 모집 공고: ${db.notices?.length || 0}개`,
         `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
         `✅ 데이터 무결성 검증 완료. 정상 작동 중입니다.`,
       ].join('\n');
     }
 
-    // 12. BROADCAST COMMAND (/broadcast, 공지) - Allowed for All Admins
+    // 12. BROADCAST COMMAND (/broadcast, 공지) - Level 4, 5 Only (Admin 3 cannot broadcast)
     if (main === '/broadcast' || main === '공지') {
+      if (userLevel < 4) {
+        return `⛔ **[권한 제한]** 긴급 팝업 공지(/broadcast)는 Level 4 (Head Admin) 및 Level 5 (Owner) 전용입니다. (Admin 사용 불가)`;
+      }
       const broadcastMsg = args.join(' ').trim();
       if (!broadcastMsg) {
-        return `⚠️ 사용법: \`/broadcast <공지 내용>\` (예: \`/broadcast 공지: 매너 채팅을 부탁드립니다.\`)`;
+        return `⚠️ 사용법: \`/broadcast <공지 내용>\``;
       }
 
       const alertPayload = JSON.stringify({
         type: "system:broadcast",
         payload: {
           id: `bc_${Date.now()}`,
-          title: `📢 시스템 공지사항 (${userIsSuper ? '최고 관리자' : '부관리자'})`,
+          title: `📢 시스템 공지사항 (${getAdminRoleName(userLevel)})`,
           message: broadcastMsg,
           senderName: adminUser.name,
           timestamp: Date.now(),
@@ -910,19 +1090,29 @@ async function startServer() {
       return `📢 **[공지 전송 완료]**\n현재 접속 중인 ${sentCount}개의 클라이언트 화면에 공지가 실시간 송출되었습니다.\n내용: "${broadcastMsg}"`;
     }
 
-    // 13. KICK COMMAND (/kick, 강퇴) - Allowed for All Admins
+    // 13. KICK COMMAND (/kick, 강퇴) - Level 3+ (Admin, HeadAdmin, Owner)
     if (main === '/kick' || main === '강퇴') {
+      if (userLevel < 3) {
+        return `⛔ **[권한 제한]** 강퇴 기능은 Level 3 (Admin) 이상부터 사용 가능합니다.`;
+      }
       const targetUsername = args[0]?.replace(/^@/, '').toLowerCase();
       if (!targetUsername) {
         return `⚠️ 사용법: \`/kick <유저아이디>\``;
       }
-      if (targetUsername === 'jiukhan0215') {
-        return `❌ 최고 관리자는 강퇴할 수 없습니다.`;
-      }
+
       const target = db.users.find(u => u.username.toLowerCase() === targetUsername);
       if (!target) {
         return `❌ '@${targetUsername}' 유저를 찾을 수 없습니다.`;
       }
+
+      const targetLevel = getAdminLevel(target);
+      if (targetLevel >= userLevel && userLevel < 5) {
+        return `❌ 나보다 권한 레벨이 높거나 같은 관리자는 강퇴할 수 없습니다.`;
+      }
+      if (targetUsername === 'jiukhan0215') {
+        return `❌ 최고 소유자는 강퇴할 수 없습니다.`;
+      }
+
       const sockets = userSockets.get(target.id);
       if (sockets && sockets.size > 0) {
         for (const ws of sockets) {
@@ -941,19 +1131,23 @@ async function startServer() {
       }
     }
 
-    // 14. SETNAME COMMAND (/setname, 닉네임변경) - Allowed for All Admins
+    // 14. SETNAME COMMAND (/setname, 닉네임변경) - Level 3+
     if (main === '/setname' || main === '닉네임변경' || main === '이름변경') {
+      if (userLevel < 3) {
+        return `⛔ **[권한 제한]** 닉네임 변경은 Level 3 (Admin) 이상부터 사용 가능합니다.`;
+      }
       const targetUsername = args[0]?.replace(/^@/, '').toLowerCase();
       const newName = args.slice(1).join(' ').trim();
       if (!targetUsername || !newName) {
-        return `⚠️ 사용법: \`/setname <아이디> <새이름>\` (예: \`/setname alex 알렉스\`)`;
-      }
-      if (targetUsername === 'jiukhan0215' && !userIsSuper) {
-        return `❌ 최고 관리자의 닉네임은 변경할 수 없습니다.`;
+        return `⚠️ 사용법: \`/setname <아이디> <새이름>\``;
       }
       const target = db.users.find((u) => u.username.toLowerCase() === targetUsername);
       if (!target) {
         return `❌ '@${targetUsername}' 사용자를 찾을 수 없습니다.`;
+      }
+      const targetLevel = getAdminLevel(target);
+      if (targetLevel >= userLevel && userLevel < 5) {
+        return `❌ 나보다 권한 레벨이 높거나 같은 관리자의 닉네임은 변경할 수 없습니다.`;
       }
       const oldName = target.name;
       target.name = newName;
@@ -971,13 +1165,17 @@ async function startServer() {
       return `✨ **[닉네임 강제 변경 완료]**\n@${target.username} 님의 표시 이름이 **'${oldName}'** ➔ **'${newName}'**(으)로 변경되었습니다.`;
     }
 
-    // 15. USERS COMMAND (/users, 유저목록) - Allowed for All Admins
+    // 15. USERS COMMAND (/users, 유저목록) - Level 2+ (Moder, Admin, HeadAdmin, Owner)
     if (main === '/users' || main === '유저목록' || main === '유저') {
+      if (userLevel < 2) {
+        return `⛔ **[권한 제한]** 유저 목록 조회는 Level 2 (Moder) 이상부터 사용 가능합니다.`;
+      }
       const onlineSet = new Set(userSockets.keys());
       const userLines = db.users.map((u, idx) => {
         const isOnline = onlineSet.has(u.id);
         const statusIcon = u.status === 'dnd' ? '⛔ 방해금지' : isOnline ? '🟢 온라인' : '⚪ 오프라인';
-        const roleBadge = isSuperAdmin(u) ? ' [👑 최고 관리자]' : u.role === 'admin' ? ' [🛡️ 부관리자]' : '';
+        const lvl = getAdminLevel(u);
+        const roleBadge = lvl === 5 ? ' [👑 Level 5: Owner]' : lvl === 4 ? ' [💎 Level 4: HeadAdmin]' : lvl === 3 ? ' [🛡️ Level 3: Admin]' : lvl === 2 ? ' [🔰 Level 2: Moder]' : '';
         const createdDate = new Date(u.createdAt).toLocaleDateString('ko-KR');
         return `${idx + 1}. **${u.name}** (@${u.username})${roleBadge} - ${statusIcon}\n   └ 가입: ${createdDate} | 최근: ${new Date(u.lastSeen).toLocaleTimeString('ko-KR')}`;
       });
@@ -991,8 +1189,11 @@ async function startServer() {
       ].join('\n');
     }
 
-    // 16. STATS COMMAND (/stats, 서버상태) - Allowed for All Admins
+    // 16. STATS COMMAND (/stats, 서버상태) - Level 2+
     if (main === '/stats' || main === '서버상태' || main === '통계') {
+      if (userLevel < 2) {
+        return `⛔ **[권한 제한]** 서버 상태 조회는 Level 2 (Moder) 이상부터 사용 가능합니다.`;
+      }
       const onlineSet = new Set(userSockets.keys());
       const totalMessages = db.messages.length;
       const totalGroups = db.groups.length;
@@ -1009,30 +1210,34 @@ async function startServer() {
         `• 💬 누적 저장 메시지: ${totalMessages}개`,
         `• 🏢 개설된 단체방: ${totalGroups}개`,
         `• 🤝 친구 요청 기록: ${totalFriendReqs}건`,
+        `• 📢 진행 중인 공고: ${db.notices?.filter(n => n.expiresAt > Date.now()).length || 0}건`,
         `• 💾 DB 모드: ${getFirestoreClient() ? '☁️ Firebase Firestore (영구 동기화)' : '📁 로컬 JSON'}`,
         `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
         `✅ 모든 시스템 프로세스가 정상 가동 중입니다.`,
       ].join('\n');
     }
 
-    // 17. INFO COMMAND (/info, 유저정보) - Allowed for All Admins
+    // 17. INFO COMMAND (/info, 유저정보) - Level 2+
     if (main === '/info' || main === '유저정보') {
+      if (userLevel < 2) {
+        return `⛔ **[권한 제한]** 유저 상세 정보 조회는 Level 2 (Moder) 이상부터 사용 가능합니다.`;
+      }
       const targetUsername = args[0]?.replace(/^@/, '').toLowerCase();
       if (!targetUsername) {
-        return `⚠️ 사용법: \`/info <유저아이디>\` (예: \`/info jiukhan0215\`)`;
+        return `⚠️ 사용법: \`/info <유저아이디>\``;
       }
       const target = db.users.find(u => u.username.toLowerCase() === targetUsername);
       if (!target) {
         return `❌ '@${targetUsername}' 아이디를 가진 사용자를 찾을 수 없습니다.`;
       }
       const isOnline = userSockets.has(target.id);
-      const roleStr = isSuperAdmin(target) ? '👑 최고 관리자' : target.role === 'admin' ? '🛡️ 부관리자' : '일반 유저';
+      const lvl = getAdminLevel(target);
       return [
         `👤 **[사용자 상세 정보: @${target.username}]**`,
         `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
         `• 고유 ID: \`${target.id}\``,
         `• 표시 이름: **${target.name}**`,
-        `• 회원 등급: **${roleStr}**`,
+        `• 권한 등급: **Level ${lvl} (${getAdminRoleName(lvl)})**`,
         `• 상태 이모지: ${target.avatarEmoji}`,
         `• 접속 상태: ${isOnline ? '🟢 온라인' : '⚪ 오프라인'} (${target.status})`,
         `• 상태 메시지: ${target.customStatus || '(없음)'}`,
@@ -1042,8 +1247,11 @@ async function startServer() {
       ].join('\n');
     }
 
-    // 18. STATUS COMMAND (/status, 상태변경) - Allowed for All Admins
+    // 18. STATUS COMMAND (/status, 상태변경) - Level 2+
     if (main === '/status' || main === '상태변경') {
+      if (userLevel < 2) {
+        return `⛔ **[권한 제한]** \`/status\` 명령어는 Level 2 (Moder) 이상부터 사용 가능합니다.`;
+      }
       const newStatus = args[0]?.toLowerCase() as UserStatusMode;
       const newMsg = args.slice(1).join(' ').trim();
       if (!['online', 'dnd', 'offline'].includes(newStatus)) {
@@ -1053,17 +1261,17 @@ async function startServer() {
       if (newMsg) adminUser.customStatus = newMsg;
       saveDB(db, { type: 'user', item: adminUser });
       broadcastPresence();
-      return `✅ 관리자 상태가 **${newStatus.toUpperCase()}** (상태메시지: "${adminUser.customStatus}")로 변경되었습니다.`;
+      return `✅ 상태가 **${newStatus.toUpperCase()}** (상태메시지: "${adminUser.customStatus || ''}")로 변경되었습니다.`;
     }
 
-    // 19. CLEAR COMMAND (/clear, 초기화) - Allowed for All Admins
+    // 19. CLEAR COMMAND (/clear, 초기화) - All Levels
     if (main === '/clear' || main === '초기화') {
       db.messages = db.messages.filter(m => m.conversationId !== 'conv_command');
       saveDB(db);
       return `🧹 명령어 터미널 대화 기록이 모두 초기화되었습니다.`;
     }
 
-    return `❓ 알 수 없는 명령어: \`${cmd}\`\n\`/help\`를 입력하면 사용 가능한 모든 관리자 명령어 목록을 확인할 수 있습니다.`;
+    return `❓ 알 수 없는 명령어: \`${cmd}\`\n\`/help\`를 입력하면 권한에 맞는 명령어 목록을 확인할 수 있습니다.`;
   }
 
   wss.on("connection", (ws: WebSocket) => {
@@ -2336,6 +2544,133 @@ async function startServer() {
     }
     const result = executeAdminCommand(command, senderUser);
     return res.json({ success: true, result });
+  });
+
+  // Get active Admin Notices
+  app.get("/api/admin/notices", (_req, res) => {
+    if (!db.notices) db.notices = [];
+    const activeNotices = db.notices.filter((n) => n.expiresAt > Date.now());
+    return res.json({ notices: activeNotices });
+  });
+
+  // Apply to an Admin Notice
+  app.post("/api/admin/notices/apply", (req, res) => {
+    const { noticeId, userId, reason } = req.body;
+    if (!noticeId || !userId) {
+      return res.status(400).json({ error: "noticeId and userId are required" });
+    }
+
+    if (!db.notices) db.notices = [];
+    const notice = db.notices.find((n) => n.id === noticeId);
+    if (!notice) {
+      return res.status(404).json({ error: "해당 모집 공고를 찾을 수 없습니다." });
+    }
+
+    if (notice.expiresAt <= Date.now()) {
+      return res.status(400).json({ error: "마감된 모집 공고입니다." });
+    }
+
+    const applicantUser = db.users.find((u) => u.id === userId);
+    if (!applicantUser) {
+      return res.status(404).json({ error: "사용자를 찾을 수 없습니다." });
+    }
+
+    if (notice.applicants.some((a) => a.userId === userId)) {
+      return res.status(400).json({ error: "이미 지원하신 공고입니다." });
+    }
+
+    const newApplicant = {
+      userId: applicantUser.id,
+      username: applicantUser.username,
+      name: applicantUser.name,
+      appliedAt: Date.now(),
+      reason: reason || "",
+    };
+
+    notice.applicants.push(newApplicant);
+    saveDB(db);
+
+    // Send direct notification message to Owner's Command Terminal
+    const ownerUser = db.users.find((u) => getAdminLevel(u) === 5) || db.users.find((u) => u.id === notice.creatorId);
+    if (ownerUser) {
+      const applyAlertText = [
+        `📩 **[어드민 지원 신청서 도착]**`,
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+        `• 지원자: **${applicantUser.name}** (@${applicantUser.username})`,
+        `• 지원 공고: "${notice.content.slice(0, 30)}..."`,
+        `• 지원 사유: "${reason || '(작성 안 함)'}"`,
+        `• 가입 일시: ${new Date(applicantUser.createdAt).toLocaleDateString('ko-KR')}`,
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+        `💡 선발 및 임명: \`/op ${applicantUser.username} 3\` (Admin 지급)`,
+      ].join('\n');
+
+      const alertMsg: MessageRecord = {
+        id: `msg_apply_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        conversationId: "conv_command",
+        senderId: "bot_command",
+        receiverId: ownerUser.id,
+        text: applyAlertText,
+        createdAt: Date.now(),
+        read: false,
+      };
+
+      db.messages.push(alertMsg);
+      saveDB(db, { type: 'message', item: alertMsg });
+
+      broadcastToUser(ownerUser.id, {
+        type: "message:new",
+        payload: {
+          message: {
+            ...alertMsg,
+            sender: COMMAND_BOT,
+          },
+        },
+      });
+    }
+
+    return res.json({ success: true, notice });
+  });
+
+  // Moder Terms Agreement (Level 2 auto-grant if 10 days passed)
+  app.post("/api/admin/moder/agree", (req, res) => {
+    const { userId } = req.body;
+    if (!userId) {
+      return res.status(400).json({ error: "userId is required" });
+    }
+
+    const user = db.users.find((u) => u.id === userId);
+    if (!user) {
+      return res.status(404).json({ error: "사용자를 찾을 수 없습니다." });
+    }
+
+    const tenDaysMs = 10 * 24 * 60 * 60 * 1000;
+    const accountAge = Date.now() - user.createdAt;
+    if (accountAge < tenDaysMs) {
+      const daysLeft = Math.ceil((tenDaysMs - accountAge) / (1000 * 60 * 60 * 24));
+      return res.status(400).json({ error: `가입 후 10일이 경과해야 모더레이터 승급이 가능합니다. (남은 기간: 약 ${daysLeft}일)` });
+    }
+
+    const curLvl = getAdminLevel(user);
+    if (curLvl < 2) {
+      user.adminLevel = 2;
+      user.role = 'admin';
+      user.moderAgreedAt = Date.now();
+      saveDB(db, { type: 'user', item: user });
+
+      const { password: _, ...safeUser } = user;
+      for (const client of wss.clients) {
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(JSON.stringify({
+            type: "user:profile_updated",
+            payload: { user: safeUser },
+          }));
+        }
+      }
+
+      return res.json({ success: true, user: safeUser });
+    }
+
+    return res.json({ success: true, user: (({ password: _, ...s }) => s)(user) });
   });
 
   // React to message (1:1 or Group)

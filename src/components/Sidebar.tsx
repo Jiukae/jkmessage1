@@ -15,6 +15,7 @@ import {
   CheckCheck,
 } from 'lucide-react';
 import { BottomRightProfile } from './BottomRightProfile';
+import { RoleBadge } from '../utils/roleUtils';
 
 interface SidebarProps {
   currentUser: User | null;
@@ -35,6 +36,7 @@ interface SidebarProps {
   onOpenAddFriendModal?: () => void;
   onOpenCreateGroupModal?: () => void;
   onOpenNewChatModal?: () => void;
+  onOpenModerAgreement?: () => void;
   onSelectConversation: (conversationId: string) => void;
   onStartChatWithUser: (user: User) => void;
   onOpenUserDetail?: (user: User) => void;
@@ -60,6 +62,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenAddFriendModal,
   onOpenCreateGroupModal,
   onOpenNewChatModal,
+  onOpenModerAgreement,
   onSelectConversation,
   onStartChatWithUser,
   onOpenUserDetail,
@@ -573,17 +576,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           <span className="font-semibold text-xs sm:text-sm text-white truncate">
                             {f.name}
                           </span>
-                          {(f.username.toLowerCase() === 'jiukhan0215' || f.role === 'superadmin') ? (
-                            <span className="px-1.5 py-0.2 text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded flex items-center gap-0.5 shrink-0">
-                              <Shield className="w-2.5 h-2.5" />
-                              <span>최고관리자</span>
-                            </span>
-                          ) : f.role === 'admin' ? (
-                            <span className="px-1.5 py-0.2 text-[9px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30 rounded flex items-center gap-0.5 shrink-0">
-                              <Shield className="w-2.5 h-2.5" />
-                              <span>부관리자</span>
-                            </span>
-                          ) : null}
+                          <RoleBadge user={f} size="sm" />
                         </div>
                         <div className="text-[11px] text-white/50 font-mono truncate">
                           @{f.username}
@@ -620,8 +613,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
             ) : (
               filteredAllUsers.map((u) => {
                 const statusInfo = getUserStatusInfo(u.id, u.status);
-                const isSuper = u.username.toLowerCase() === 'jiukhan0215' || u.role === 'superadmin';
-                const isSubAdmin = u.role === 'admin' && !isSuper;
 
                 return (
                   <button
@@ -645,17 +636,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         <span className="font-semibold text-xs sm:text-sm text-white truncate group-hover:text-blue-300 transition-colors">
                           {u.name}
                         </span>
-                        {isSuper ? (
-                          <span className="px-1.5 py-0.2 text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded flex items-center gap-0.5 shrink-0">
-                            <Shield className="w-2.5 h-2.5" />
-                            <span>최고관리자</span>
-                          </span>
-                        ) : isSubAdmin ? (
-                          <span className="px-1.5 py-0.2 text-[9px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30 rounded flex items-center gap-0.5 shrink-0">
-                            <Shield className="w-2.5 h-2.5" />
-                            <span>부관리자</span>
-                          </span>
-                        ) : null}
+                        <RoleBadge user={u} size="sm" />
                       </div>
                       <div className="text-[11px] text-white/50 font-mono truncate">
                         @{u.username}

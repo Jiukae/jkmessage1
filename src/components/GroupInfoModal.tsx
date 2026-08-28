@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { User, GroupRoom, UserStatusMode } from '../types';
 import { X, Users, UserPlus, LogOut, Check, Shield, Search, AlertCircle } from 'lucide-react';
+import { RoleBadge } from '../utils/roleUtils';
 
 interface GroupInfoModalProps {
   group: GroupRoom;
@@ -257,6 +258,7 @@ export const GroupInfoModal: React.FC<GroupInfoModalProps> = ({
                               <Shield className="w-2.5 h-2.5" /> 방장
                             </span>
                           )}
+                          <RoleBadge user={userObj} size="sm" />
                         </div>
                         <span className="text-[10px] text-white/40 font-mono">
                           @{userObj?.username || (isMe ? currentUser.username : '')}

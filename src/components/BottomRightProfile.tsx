@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { User, UserStatusMode } from '../types';
+import { RoleBadge } from '../utils/roleUtils';
 import {
   LogIn,
   UserPlus,
@@ -145,12 +146,7 @@ export const BottomRightProfile: React.FC<BottomRightProfileProps> = ({
                 <span className="font-bold text-xs sm:text-sm text-white truncate max-w-[100px]">
                   {currentUser.name}
                 </span>
-                {isAdmin && (
-                  <span className="px-1.5 py-0.2 text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded flex items-center gap-0.5 shrink-0">
-                    <Shield className="w-2.5 h-2.5" />
-                    <span>관리자</span>
-                  </span>
-                )}
+                <RoleBadge user={currentUser} size="sm" />
               </div>
 
               <div className="flex items-center gap-1.5 mt-0.5">

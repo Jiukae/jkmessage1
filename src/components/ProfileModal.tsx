@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { User } from '../types';
 import { X, Copy, Check, Sparkles, User as UserIcon, LogOut } from 'lucide-react';
+import { RoleBadge } from '../utils/roleUtils';
 
 interface ProfileModalProps {
   user: User;
@@ -97,7 +98,10 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
               {avatarEmoji}
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-white font-semibold truncate">{name || user.name}</div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-white font-semibold truncate">{name || user.name}</span>
+                <RoleBadge user={user} size="sm" />
+              </div>
               <div className="flex items-center gap-2 mt-0.5">
                 <span className="text-xs text-blue-400 font-mono bg-blue-500/10 px-2 py-0.5 rounded-md border border-blue-400/20">
                   @{user.username}

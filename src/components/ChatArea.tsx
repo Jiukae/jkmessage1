@@ -29,6 +29,7 @@ import {
   ThumbsUp,
   Terminal,
 } from 'lucide-react';
+import { getAdminLevel, getAdminRoleInfo, RoleBadge } from '../utils/roleUtils';
 
 interface ChatAreaProps {
   currentUser: User;
@@ -1014,42 +1015,87 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
         
         {/* Admin Quick Command Chips */}
         {(conversationId === 'conv_command' || partner?.id === 'bot_command') && (() => {
-          const isSuper = currentUser?.username?.toLowerCase() === 'jiukhan0215' || currentUser?.role === 'superadmin';
-          const chips = isSuper ? [
-            { label: '📋 /help', cmd: '/help' },
-            { label: '👑 /op (지급)', cmd: '/op ' },
-            { label: '🛡️ /deop (회수)', cmd: '/deop ' },
-            { label: '👥 /adminlist', cmd: '/adminlist' },
-            { label: '🚫 /ban', cmd: '/ban ' },
-            { label: '⏳ /timeban', cmd: '/timeban ' },
-            { label: '✨ /unban', cmd: '/unban ' },
-            { label: '🛡️ /banlist', cmd: '/banlist' },
-            { label: '⚠️ /maintenance', cmd: '/maintenance ' },
-            { label: '📢 /broadcast', cmd: '/broadcast ' },
-            { label: '👥 /users', cmd: '/users' },
-            { label: '📊 /stats', cmd: '/stats' },
-            { label: '⚡ /kick', cmd: '/kick ' },
-            { label: '✏️ /setname', cmd: '/setname ' },
-            { label: '🧹 /wipe', cmd: '/wipe all' },
-            { label: '💾 /db', cmd: '/db' },
-            { label: '🧹 /clear', cmd: '/clear' },
-          ] : [
-            { label: '📋 /help', cmd: '/help' },
-            { label: '📢 /broadcast', cmd: '/broadcast ' },
-            { label: '👥 /adminlist', cmd: '/adminlist' },
-            { label: '👥 /users', cmd: '/users' },
-            { label: '📊 /stats', cmd: '/stats' },
-            { label: '⚡ /kick', cmd: '/kick ' },
-            { label: '✏️ /setname', cmd: '/setname ' },
-            { label: '👤 /info', cmd: '/info ' },
-            { label: '🧹 /clear', cmd: '/clear' },
-          ];
+          const userLevel = getAdminLevel(currentUser);
+          const roleInfo = getAdminRoleInfo(userLevel);
+
+          let chips: { label: string; cmd: string }[] = [];
+          if (userLevel === 5) {
+            // Level 5 (Owner): All commands
+            chips = [
+              { label: '📋 /help', cmd: '/help' },
+              { label: '👑 /op <id> <1-5>', cmd: '/op ' },
+              { label: '📢 /notice <시간> <글>', cmd: '/notice 1d ' },
+              { label: '👥 /adminlist', cmd: '/adminlist' },
+              { label: '🚫 /ban', cmd: '/ban ' },
+              { label: '⏳ /timeban', cmd: '/timeban ' },
+              { label: '✨ /unban', cmd: '/unban ' },
+              { label: '🛡️ /banlist', cmd: '/banlist' },
+              { label: '⚠️ /maintenance', cmd: '/maintenance ' },
+              { label: '📢 /broadcast', cmd: '/broadcast ' },
+              { label: '👥 /users', cmd: '/users' },
+              { label: '📊 /stats', cmd: '/stats' },
+              { label: '⚡ /kick', cmd: '/kick ' },
+              { label: '✏️ /setname', cmd: '/setname ' },
+              { label: '👤 /info', cmd: '/info ' },
+              { label: '🟢 /status', cmd: '/status online ' },
+              { label: '🧹 /wipe', cmd: '/wipe all' },
+              { label: '💾 /db', cmd: '/db' },
+              { label: '🧹 /clear', cmd: '/clear' },
+            ];
+          } else if (userLevel === 4) {
+            // Level 4 (Head Admin): All except maintenance
+            chips = [
+              { label: '📋 /help', cmd: '/help' },
+              { label: '👥 /adminlist', cmd: '/adminlist' },
+              { label: '🚫 /ban', cmd: '/ban ' },
+              { label: '⏳ /timeban', cmd: '/timeban ' },
+              { label: '✨ /unban', cmd: '/unban ' },
+              { label: '🛡️ /banlist', cmd: '/banlist' },
+              { label: '📢 /broadcast', cmd: '/broadcast ' },
+              { label: '👥 /users', cmd: '/users' },
+              { label: '📊 /stats', cmd: '/stats' },
+              { label: '⚡ /kick', cmd: '/kick ' },
+              { label: '✏️ /setname', cmd: '/setname ' },
+              { label: '👤 /info', cmd: '/info ' },
+              { label: '🟢 /status', cmd: '/status online ' },
+              { label: '🧹 /clear', cmd: '/clear' },
+            ];
+          } else if (userLevel === 3) {
+            // Level 3 (Admin): Most commands except ban, timeban, broadcast, maintenance
+            chips = [
+              { label: '📋 /help', cmd: '/help' },
+              { label: '👥 /adminlist', cmd: '/adminlist' },
+              { label: '👥 /users', cmd: '/users' },
+              { label: '📊 /stats', cmd: '/stats' },
+              { label: '⚡ /kick', cmd: '/kick ' },
+              { label: '✏️ /setname', cmd: '/setname ' },
+              { label: '👤 /info', cmd: '/info ' },
+              { label: '🟢 /status', cmd: '/status online ' },
+              { label: '🧹 /clear', cmd: '/clear' },
+            ];
+          } else if (userLevel === 2) {
+            // Level 2 (Moder): Basic commands
+            chips = [
+              { label: '📋 /help', cmd: '/help' },
+              { label: '👥 /users', cmd: '/users' },
+              { label: '📊 /stats', cmd: '/stats' },
+              { label: '👤 /info', cmd: '/info ' },
+              { label: '🟢 /status', cmd: '/status online ' },
+              { label: '🧹 /clear', cmd: '/clear' },
+            ];
+          } else {
+            // Level 1 (Guest)
+            chips = [
+              { label: '📋 /help', cmd: '/help' },
+              { label: '🧹 /clear', cmd: '/clear' },
+            ];
+          }
 
           return (
             <div className="mb-2.5 flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
-              <span className="text-[10px] text-amber-300/60 font-mono shrink-0 mr-1 flex items-center gap-1">
+              <span className="text-[10px] text-amber-300/80 font-mono shrink-0 mr-1 flex items-center gap-1">
                 <Terminal className="w-3 h-3 text-amber-400" />
-                <span>{isSuper ? '최고관리자 명령어:' : '부관리자 명령어:'}</span>
+                <span>{roleInfo.title} 명령어:</span>
               </span>
               {chips.map((chip) => (
                 <button
