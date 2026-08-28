@@ -407,7 +407,7 @@ export default function App() {
             }
 
             case 'system:broadcast': {
-              const bText = msg.payload?.text;
+              const bText = msg.payload?.message || msg.payload?.text;
               if (bText) {
                 sounds.playIncomingMessage();
                 setBroadcastAlert(bText);
@@ -415,6 +415,20 @@ export default function App() {
                   body: bText,
                 });
               }
+              break;
+            }
+
+            case 'system:kicked': {
+              const reason = msg.payload?.reason || '관리자에 의해 연결이 종료되었습니다.';
+              alert(`[이용 제한 안내]\n${reason}`);
+              handleLogout();
+              break;
+            }
+
+            case 'system:maintenance': {
+              const reason = msg.payload?.message || '서버 점검 중입니다.';
+              alert(`[서버 점검 안내]\n${reason}`);
+              handleLogout();
               break;
             }
 
@@ -470,8 +484,10 @@ export default function App() {
               break;
             }
 
-            case 'message:receive': {
+            case 'message:receive':
+            case 'message:new': {
               const newMsg: Message = msg.payload.message;
+              if (!newMsg) break;
               const isCurrentChat = curActiveConvId === newMsg.conversationId;
 
               if (isCurrentChat) {
@@ -644,9 +660,27 @@ export default function App() {
             return [...prev, data.message];
           });
         }
+        if (data.botResponse) {
+          setCurrentMessages((prev) => {
+            if (prev.some((m) => m.id === data.botResponse.id)) return prev;
+            return [...prev, data.botResponse];
+          });
+        }
+        if (data.botReply) {
+          setCurrentMessages((prev) => {
+            if (prev.some((m) => m.id === data.botReply.id)) return prev;
+            return [...prev, data.botReply];
+          });
+        }
         fetchConversations(currentUser.id);
       } else {
         const errData = await res.json().catch(() => ({}));
+        if (errData.isBanned) {
+          alert(errData.error || '이용이 제한된 계정입니다.');
+          handleLogout();
+        } else if (errData.error) {
+          alert(errData.error);
+        }
         console.error('Failed to send message:', errData);
       }
     } catch (e) {

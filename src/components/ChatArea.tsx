@@ -1013,42 +1013,60 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
       <footer className="p-3 sm:p-4 md:p-5 bg-purple-950/15 border-t border-purple-500/15 backdrop-blur-xl shrink-0">
         
         {/* Admin Quick Command Chips */}
-        {(conversationId === 'conv_command' || partner?.id === 'bot_command') && (
-          <div className="mb-2.5 flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
-            <span className="text-[10px] text-amber-300/60 font-mono shrink-0 mr-1 flex items-center gap-1">
-              <Terminal className="w-3 h-3 text-amber-400" />
-              <span>빠른 명령어:</span>
-            </span>
-            {[
-              { label: '📋 /help', cmd: '/help' },
-              { label: '🚫 /ban', cmd: '/ban ' },
-              { label: '⏳ /timeban', cmd: '/timeban ' },
-              { label: '✨ /unban', cmd: '/unban ' },
-              { label: '🛡️ /banlist', cmd: '/banlist' },
-              { label: '⚠️ /maintenance', cmd: '/maintenance ' },
-              { label: '📢 /broadcast', cmd: '/broadcast ' },
-              { label: '👥 /users', cmd: '/users' },
-              { label: '📊 /stats', cmd: '/stats' },
-              { label: '⚡ /kick', cmd: '/kick ' },
-              { label: '✏️ /setname', cmd: '/setname ' },
-              { label: '🧹 /wipe', cmd: '/wipe all' },
-              { label: '💾 /db', cmd: '/db' },
-              { label: '🧹 /clear', cmd: '/clear' },
-            ].map((chip) => (
-              <button
-                key={chip.label}
-                type="button"
-                onClick={() => {
-                  setInputText(chip.cmd);
-                  textareaRef.current?.focus();
-                }}
-                className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-200 border border-amber-500/30 text-[11px] font-mono whitespace-nowrap transition-colors"
-              >
-                {chip.label}
-              </button>
-            ))}
-          </div>
-        )}
+        {(conversationId === 'conv_command' || partner?.id === 'bot_command') && (() => {
+          const isSuper = currentUser?.username?.toLowerCase() === 'jiukhan0215' || currentUser?.role === 'superadmin';
+          const chips = isSuper ? [
+            { label: '📋 /help', cmd: '/help' },
+            { label: '👑 /op (지급)', cmd: '/op ' },
+            { label: '🛡️ /deop (회수)', cmd: '/deop ' },
+            { label: '👥 /adminlist', cmd: '/adminlist' },
+            { label: '🚫 /ban', cmd: '/ban ' },
+            { label: '⏳ /timeban', cmd: '/timeban ' },
+            { label: '✨ /unban', cmd: '/unban ' },
+            { label: '🛡️ /banlist', cmd: '/banlist' },
+            { label: '⚠️ /maintenance', cmd: '/maintenance ' },
+            { label: '📢 /broadcast', cmd: '/broadcast ' },
+            { label: '👥 /users', cmd: '/users' },
+            { label: '📊 /stats', cmd: '/stats' },
+            { label: '⚡ /kick', cmd: '/kick ' },
+            { label: '✏️ /setname', cmd: '/setname ' },
+            { label: '🧹 /wipe', cmd: '/wipe all' },
+            { label: '💾 /db', cmd: '/db' },
+            { label: '🧹 /clear', cmd: '/clear' },
+          ] : [
+            { label: '📋 /help', cmd: '/help' },
+            { label: '📢 /broadcast', cmd: '/broadcast ' },
+            { label: '👥 /adminlist', cmd: '/adminlist' },
+            { label: '👥 /users', cmd: '/users' },
+            { label: '📊 /stats', cmd: '/stats' },
+            { label: '⚡ /kick', cmd: '/kick ' },
+            { label: '✏️ /setname', cmd: '/setname ' },
+            { label: '👤 /info', cmd: '/info ' },
+            { label: '🧹 /clear', cmd: '/clear' },
+          ];
+
+          return (
+            <div className="mb-2.5 flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+              <span className="text-[10px] text-amber-300/60 font-mono shrink-0 mr-1 flex items-center gap-1">
+                <Terminal className="w-3 h-3 text-amber-400" />
+                <span>{isSuper ? '최고관리자 명령어:' : '부관리자 명령어:'}</span>
+              </span>
+              {chips.map((chip) => (
+                <button
+                  key={chip.label}
+                  type="button"
+                  onClick={() => {
+                    setInputText(chip.cmd);
+                    textareaRef.current?.focus();
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-200 border border-amber-500/30 text-[11px] font-mono whitespace-nowrap transition-colors"
+                >
+                  {chip.label}
+                </button>
+              ))}
+            </div>
+          );
+        })()}
 
         <form onSubmit={handleSend} className="flex items-center gap-2 sm:gap-3 bg-white/5 border border-white/10 rounded-2xl p-2 focus-within:border-indigo-400/40 focus-within:ring-1 focus-within:ring-indigo-500/30 transition-all backdrop-blur-sm">
           

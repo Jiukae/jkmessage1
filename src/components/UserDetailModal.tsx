@@ -23,7 +23,8 @@ export const UserDetailModal: React.FC<UserDetailModalProps> = ({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const isAdmin = user.username.toLowerCase() === 'jiukhan0215';
+  const isSuper = user.username.toLowerCase() === 'jiukhan0215' || user.role === 'superadmin';
+  const isSubAdmin = user.role === 'admin' && !isSuper;
 
   const formattedDate = user.createdAt
     ? new Date(user.createdAt).toLocaleDateString('ko-KR', {
@@ -67,12 +68,17 @@ export const UserDetailModal: React.FC<UserDetailModalProps> = ({
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <h3 className="text-xl font-bold text-white">{user.name}</h3>
-              {isAdmin && (
+              {isSuper ? (
                 <span className="px-2 py-0.5 text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-lg flex items-center gap-1">
                   <Shield className="w-3 h-3" />
-                  <span>관리자</span>
+                  <span>최고 관리자</span>
                 </span>
-              )}
+              ) : isSubAdmin ? (
+                <span className="px-2 py-0.5 text-xs font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30 rounded-lg flex items-center gap-1">
+                  <Shield className="w-3 h-3" />
+                  <span>부관리자</span>
+                </span>
+              ) : null}
             </div>
 
             <div className="flex items-center gap-2">

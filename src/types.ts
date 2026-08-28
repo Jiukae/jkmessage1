@@ -1,4 +1,5 @@
 export type UserStatusMode = 'online' | 'dnd' | 'offline';
+export type UserRole = 'superadmin' | 'admin' | 'user';
 
 export interface User {
   id: string;
@@ -9,6 +10,7 @@ export interface User {
   avatarEmoji: string;
   customStatus?: string;
   status: UserStatusMode;
+  role?: UserRole;
   dndUntil?: number | null; // timestamp when DND expires (null means indefinitely until changed)
   lastSeen: number;
   createdAt: number;
@@ -97,5 +99,6 @@ export type WSEvent =
   | { type: 'group:created'; payload: { group: GroupRoom } }
   | { type: 'group:updated'; payload: { group: GroupRoom } }
   | { type: 'group:left'; payload: { groupId: string; userId: string } }
-  | { type: 'system:broadcast'; payload: { id: string; title: string; message: string; senderName: string; timestamp: number } };
+  | { type: 'system:broadcast'; payload: { id: string; title: string; message: string; senderName: string; timestamp: number } }
+  | { type: 'system:kicked'; payload: { reason: string } };
 
