@@ -120,14 +120,14 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onBack, onRegisterSu
   };
 
   return (
-    <div className="min-h-screen w-full bg-[#080711] text-white flex flex-col items-center justify-center p-4 relative overflow-y-auto">
+    <div className="fixed inset-0 w-full h-full bg-[#080711] text-white overflow-y-auto z-50 p-4 sm:p-6 select-text">
       {/* Background ambient lighting (Rich Purple/Violet Aura) */}
-      <div className="absolute -top-32 -left-32 w-[550px] h-[550px] bg-gradient-to-br from-purple-600/40 via-violet-600/30 to-indigo-700/20 rounded-full blur-[130px] pointer-events-none" />
-      <div className="absolute -bottom-32 -right-32 w-[600px] h-[600px] bg-gradient-to-tl from-purple-700/45 via-fuchsia-600/30 to-indigo-600/25 rounded-full blur-[140px] pointer-events-none" />
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-violet-600/20 rounded-full blur-[120px] pointer-events-none" />
+      <div className="fixed -top-32 -left-32 w-[550px] h-[550px] bg-gradient-to-br from-purple-600/40 via-violet-600/30 to-indigo-700/20 rounded-full blur-[130px] pointer-events-none" />
+      <div className="fixed -bottom-32 -right-32 w-[600px] h-[600px] bg-gradient-to-tl from-purple-700/45 via-fuchsia-600/30 to-indigo-600/25 rounded-full blur-[140px] pointer-events-none" />
+      <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-violet-600/20 rounded-full blur-[120px] pointer-events-none" />
 
       {/* Main Centered Container */}
-      <div className="w-full max-w-lg my-8 relative z-10">
+      <div className="w-full max-w-lg mx-auto my-6 sm:my-10 relative z-10 pb-12">
         
         {/* Back Button */}
         <div className="mb-4">

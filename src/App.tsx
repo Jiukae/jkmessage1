@@ -627,6 +627,7 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           conversationId: activeConversationId,
+          receiverId: !isGroupActive ? partnerUser?.id : undefined,
           senderId: currentUser.id,
           senderName: currentUser.name,
           text,
@@ -644,6 +645,9 @@ export default function App() {
           });
         }
         fetchConversations(currentUser.id);
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        console.error('Failed to send message:', errData);
       }
     } catch (e) {
       console.error('Failed to send message:', e);

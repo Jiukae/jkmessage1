@@ -1639,11 +1639,6 @@ async function startServer() {
       if (msg.receiverId !== "group" && !msg.conversationId.startsWith("group_") && msg.conversationId !== "conv_command") {
         if (msg.senderId === userId || msg.receiverId === userId) {
           const otherUserId = msg.senderId === userId ? msg.receiverId : msg.senderId;
-          
-          if (!areFriends(userId, otherUserId)) {
-            continue;
-          }
-
           const convId = msg.conversationId;
 
           if (!userConvs.has(convId)) {
@@ -1898,10 +1893,6 @@ async function startServer() {
     // 1:1 conversation check
     const otherId = getOtherUserIdFromConv(conversationId, userId);
 
-    if (otherId && !areFriends(userId, otherId)) {
-      return res.status(403).json({ error: "친구 사이에서만 대화 내역을 조회할 수 있습니다.", notFriends: true });
-    }
-
     // Mark unread messages sent to current user as read
     let updated = false;
     db.messages.forEach((m) => {
@@ -2072,25 +2063,26 @@ async function startServer() {
     }
 
     // 1:1 message
-    if (!receiverId) {
-      return res.status(400).json({ error: "receiverId is required for 1:1 chat" });
+    const effectiveReceiverId = receiverId || (customConvId ? getOtherUserIdFromConv(customConvId, senderId) : undefined);
+
+    if (!effectiveReceiverId) {
+      return res.status(400).json({ error: "수신자(receiverId) 또는 conversationId가 필요합니다." });
     }
 
-    if (!areFriends(senderId, receiverId)) {
-      return res.status(403).json({
-        error: "상대방과 친구가 되어야만 대화를 나눌 수 있습니다. 먼저 친구 요청을 보내주세요!",
-        notFriends: true,
-      });
-    }
-
-    const conversationId = getConversationId(senderId, receiverId);
     const senderUser = db.users.find((u) => u.id === senderId);
+    const receiverUser = db.users.find((u) => u.id === effectiveReceiverId);
+
+    if (!receiverUser) {
+      return res.status(404).json({ error: "상대방 사용자를 찾을 수 없습니다." });
+    }
+
+    const conversationId = customConvId || getConversationId(senderId, effectiveReceiverId);
 
     const newMsg: MessageRecord = {
       id: `msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       conversationId,
       senderId,
-      receiverId,
+      receiverId: effectiveReceiverId,
       text: (text || "").trim(),
       createdAt: Date.now(),
       read: false,
@@ -2112,7 +2104,7 @@ async function startServer() {
     };
 
     // Broadcast to receiver & sender
-    broadcastToUser(receiverId, wsPayload);
+    broadcastToUser(effectiveReceiverId, wsPayload);
     broadcastToUser(senderId, wsPayload);
 
     return res.json({ message: populatedMsg });

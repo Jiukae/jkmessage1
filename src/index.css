@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@import url("https://cdn.jsdelivr.net/gh/moonspam/NanumSquareNeo@1.0/nanumsquareneo.css");
 
 @layer base {
   * {
