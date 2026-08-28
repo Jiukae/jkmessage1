@@ -85,6 +85,7 @@ export default function App() {
   const [showNotificationPrompt, setShowNotificationPrompt] = useState(false);
   const [showStatusPicker, setShowStatusPicker] = useState(false);
   const [showAddFriendModal, setShowAddFriendModal] = useState(false);
+  const [showNewChatModal, setShowNewChatModal] = useState(false);
   const [selectedExploreUser, setSelectedExploreUser] = useState<User | null>(null);
 
   // Mobile navigation state
@@ -309,7 +310,7 @@ export default function App() {
     fetchMessages(activeConversationId, currentUser.id);
   }, [currentUser, activeConversationId, fetchMessages]);
 
-  // WebSocket Connection
+  // WebSocket Connection with Reconnection Backoff Strategy
   useEffect(() => {
     const currentUserId = currentUser?.id;
     if (!currentUserId) return;
@@ -318,41 +319,68 @@ export default function App() {
     let isUnmounted = false;
     let pingInterval: NodeJS.Timeout | null = null;
     let reconnectTimeout: NodeJS.Timeout | null = null;
+    let retryAttempts = 0;
+    const BASE_DELAY = 1000;
+    const MAX_DELAY = 30000;
+
+    const scheduleReconnect = () => {
+      if (isUnmounted || reconnectTimeout) return;
+      if (pingInterval) clearInterval(pingInterval);
+
+      // Exponential backoff: min(BASE_DELAY * (1.8 ^ attempts) + jitter, MAX_DELAY)
+      const jitter = Math.floor(Math.random() * 500);
+      const delay = Math.min(BASE_DELAY * Math.pow(1.8, retryAttempts) + jitter, MAX_DELAY);
+      retryAttempts++;
+
+      reconnectTimeout = setTimeout(() => {
+        reconnectTimeout = null;
+        connect();
+      }, delay);
+    };
 
     const connect = () => {
       if (isUnmounted) return;
 
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}`;
-      ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
+      try {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}`;
+        ws = new WebSocket(wsUrl);
+        wsRef.current = ws;
 
-      ws.onopen = () => {
-        if (isUnmounted) {
-          ws?.close();
-          return;
-        }
-        ws?.send(JSON.stringify({ type: 'auth', payload: { userId: currentUserId } }));
-
-        if (pingInterval) clearInterval(pingInterval);
-        pingInterval = setInterval(() => {
-          if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'ping' }));
+        ws.onopen = () => {
+          if (isUnmounted) {
+            ws?.close();
+            return;
           }
-        }, 20000);
 
-        if (currentUserRef.current) {
-          fetchConversations(currentUserRef.current.id);
-          fetchFriends(currentUserRef.current.id);
-          fetchPendingFriendRequests(currentUserRef.current.id);
-          const activeId = activeConversationIdRef.current;
-          if (activeId) {
-            fetchMessages(activeId, currentUserRef.current.id);
+          // Reset backoff on successful connection
+          retryAttempts = 0;
+          if (reconnectTimeout) {
+            clearTimeout(reconnectTimeout);
+            reconnectTimeout = null;
           }
-        }
-      };
 
-      ws.onmessage = (event) => {
+          ws?.send(JSON.stringify({ type: 'auth', payload: { userId: currentUserId } }));
+
+          if (pingInterval) clearInterval(pingInterval);
+          pingInterval = setInterval(() => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: 'ping' }));
+            }
+          }, 20000);
+
+          if (currentUserRef.current) {
+            fetchConversations(currentUserRef.current.id);
+            fetchFriends(currentUserRef.current.id);
+            fetchPendingFriendRequests(currentUserRef.current.id);
+            const activeId = activeConversationIdRef.current;
+            if (activeId) {
+              fetchMessages(activeId, currentUserRef.current.id);
+            }
+          }
+        };
+
+        ws.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);
           if (msg.type === 'pong') return;
@@ -534,16 +562,27 @@ export default function App() {
         }
       };
 
-      ws.onclose = () => {
-        if (pingInterval) clearInterval(pingInterval);
-        if (!isUnmounted) {
-          reconnectTimeout = setTimeout(connect, 3000);
-        }
-      };
+        ws.onclose = () => {
+          if (pingInterval) clearInterval(pingInterval);
+          scheduleReconnect();
+        };
 
-      ws.onerror = () => {
-        ws?.close();
-      };
+        ws.onerror = (err) => {
+          // If socket fails before or during open, ensure graceful handling and reconnection
+          console.warn('[WS] Socket error/closed without opened:', err);
+          try {
+            if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) {
+              ws.close();
+            }
+          } catch (_) {
+            // ignore
+          }
+          scheduleReconnect();
+        };
+      } catch (err) {
+        console.warn('[WS] Failed to instantiate WebSocket:', err);
+        scheduleReconnect();
+      }
     };
 
     connect();
@@ -551,8 +590,24 @@ export default function App() {
     return () => {
       isUnmounted = true;
       if (pingInterval) clearInterval(pingInterval);
-      if (reconnectTimeout) clearTimeout(reconnectTimeout);
-      if (ws) ws.close();
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+        reconnectTimeout = null;
+      }
+      if (ws) {
+        // Detach listeners to prevent triggering unneeded reconnects on unmount
+        ws.onopen = null;
+        ws.onmessage = null;
+        ws.onclose = null;
+        ws.onerror = null;
+        try {
+          if (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN) {
+            ws.close();
+          }
+        } catch (_) {
+          // ignore
+        }
+      }
     };
   }, [currentUser?.id, fetchConversations, fetchFriends, fetchPendingFriendRequests, fetchAllUsers, fetchMessages]);
 
@@ -949,6 +1004,7 @@ export default function App() {
             onLoginSuccess={(user) => handleLoginSuccess(user, 'token', false)}
             onOpenAddFriendModal={() => setShowAddFriendModal(true)}
             onOpenCreateGroupModal={() => setShowCreateGroupModal(true)}
+            onOpenNewChatModal={() => setShowNewChatModal(true)}
             onSelectConversation={handleSelectConversation}
             onStartChatWithUser={handleStartChatWithUser}
             onOpenUserDetail={(u) => setSelectedExploreUser(u)}
@@ -960,6 +1016,18 @@ export default function App() {
 
       {/* ================= MODALS ================= */}
       
+      {/* New Chat Modal */}
+      {showNewChatModal && currentUser && (
+        <NewChatModal
+          currentUserId={currentUser.id}
+          onClose={() => setShowNewChatModal(false)}
+          onSelectUser={(user) => {
+            setShowNewChatModal(false);
+            handleStartChatWithUser(user);
+          }}
+        />
+      )}
+
       {/* Create Group Modal */}
       {showCreateGroupModal && currentUser && (
         <CreateGroupModal

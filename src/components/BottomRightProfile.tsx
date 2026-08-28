@@ -258,7 +258,7 @@ export const BottomRightProfile: React.FC<BottomRightProfileProps> = ({
                   required
                   value={loginUsername}
                   onChange={(e) => setLoginUsername(e.target.value)}
-                  placeholder="아이디 입력 (예: jiukhan0215)"
+                  placeholder="아이디 입력"
                   className="w-full pl-7 pr-3 py-1.5 bg-black/40 border border-white/15 rounded-xl text-xs text-white placeholder-white/30 focus:outline-none focus:border-blue-500 transition-colors"
                 />
               </div>

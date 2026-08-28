@@ -73,7 +73,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({
               autoFocus
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="아이디(@) 또는 이름으로 검색 (예: minseo)"
+              placeholder="아이디(@) 또는 이름으로 검색"
               className="w-full pl-10 pr-4 py-2.5 bg-white/5 border border-white/10 rounded-2xl text-white placeholder-white/30 text-sm focus:outline-none focus:border-blue-400/50 focus:ring-1 focus:ring-blue-500/30 transition-all backdrop-blur-sm"
             />
           </div>

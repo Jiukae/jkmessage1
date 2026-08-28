@@ -34,6 +34,7 @@ interface SidebarProps {
   onLoginSuccess?: (user: User) => void;
   onOpenAddFriendModal?: () => void;
   onOpenCreateGroupModal?: () => void;
+  onOpenNewChatModal?: () => void;
   onSelectConversation: (conversationId: string) => void;
   onStartChatWithUser: (user: User) => void;
   onOpenUserDetail?: (user: User) => void;
@@ -58,6 +59,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onLoginSuccess = () => {},
   onOpenAddFriendModal,
   onOpenCreateGroupModal,
+  onOpenNewChatModal,
   onSelectConversation,
   onStartChatWithUser,
   onOpenUserDetail,
@@ -238,6 +240,52 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         )}
       </div>
+
+      {/* Quick Action Button Toolbar under JK Message Header */}
+      {!isGuest && (
+        <div className="px-3 pt-3 pb-2 border-b border-white/10 bg-white/[0.02]">
+          <div className="grid grid-cols-3 gap-1.5">
+            {/* 새 대화 버튼 */}
+            <button
+              id="sidebar-quick-new-chat-btn"
+              type="button"
+              onClick={onOpenNewChatModal}
+              className="flex flex-col items-center justify-center py-2 px-1 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 border border-purple-400/25 text-purple-200 hover:text-white transition-all shadow-sm group"
+              title="아이디로 새 대화 시작하기"
+            >
+              <MessageSquare className="w-4 h-4 text-purple-300 group-hover:scale-110 transition-transform mb-1" />
+              <span className="text-[11px] font-semibold tracking-tight">새 대화</span>
+            </button>
+
+            {/* 친구 추가 버튼 */}
+            <button
+              id="sidebar-quick-add-friend-btn"
+              type="button"
+              onClick={onOpenAddFriendModal}
+              className="relative flex flex-col items-center justify-center py-2 px-1 rounded-xl bg-blue-500/15 hover:bg-blue-500/25 border border-blue-400/25 text-blue-200 hover:text-white transition-all shadow-sm group"
+              title="아이디 검색으로 친구 추가하기"
+            >
+              <UserPlus className="w-4 h-4 text-blue-300 group-hover:scale-110 transition-transform mb-1" />
+              <span className="text-[11px] font-semibold tracking-tight">친구 추가</span>
+              {pendingFriendRequestsCount > 0 && (
+                <span className="absolute top-1 right-2 w-2 h-2 bg-rose-500 rounded-full animate-pulse" />
+              )}
+            </button>
+
+            {/* 단체방 버튼 */}
+            <button
+              id="sidebar-quick-create-group-btn"
+              type="button"
+              onClick={onOpenCreateGroupModal}
+              className="flex flex-col items-center justify-center py-2 px-1 rounded-xl bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-400/25 text-indigo-200 hover:text-white transition-all shadow-sm group"
+              title="새로운 그룹 단체방 생성하기"
+            >
+              <Users className="w-4 h-4 text-indigo-300 group-hover:scale-110 transition-transform mb-1" />
+              <span className="text-[11px] font-semibold tracking-tight">단체방</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Search Bar */}
       <div className="p-3 border-b border-white/10">

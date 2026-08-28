@@ -65,11 +65,17 @@ export const AddFriendModal: React.FC<AddFriendModalProps> = ({
   };
 
   // Search users
-  const searchUsers = async (q: string) => {
+  const searchUsers = async (q?: string) => {
+    const term = (q !== undefined ? q : query).trim();
+    if (!term) {
+      setSearchResults([]);
+      setHasSearched(false);
+      return;
+    }
     setLoadingSearch(true);
     try {
       const res = await fetch(
-        `/api/users/search?q=${encodeURIComponent(q)}&currentUserId=${currentUser.id}`
+        `/api/users/search?q=${encodeURIComponent(term)}&currentUserId=${currentUser.id}`
       );
       const data = await res.json();
       setSearchResults(data.users || []);
@@ -85,9 +91,10 @@ export const AddFriendModal: React.FC<AddFriendModalProps> = ({
     fetchRequests();
   }, []);
 
-  useEffect(() => {
-    searchUsers(query);
-  }, [query]);
+  const handleSearchSubmit = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    searchUsers();
+  };
 
   // Send friend request handler
   const handleSendRequest = async (targetUser: any) => {
@@ -198,19 +205,34 @@ export const AddFriendModal: React.FC<AddFriendModalProps> = ({
           
           {activeTab === 'search' ? (
             <>
-              {/* Search Bar */}
-              <div className="relative mb-3">
-                <Search className="w-4 h-4 text-white/40 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  id="friend-search-input"
-                  type="text"
-                  autoFocus
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="친구의 아이디(@) 또는 이름 검색 (예: minseo)"
-                  className="w-full pl-10 pr-4 py-2.5 bg-white/5 border border-white/10 rounded-2xl text-white placeholder-white/30 text-sm focus:outline-none focus:border-blue-400/50 focus:ring-1 focus:ring-blue-500/30 transition-all backdrop-blur-sm"
-                />
-              </div>
+              {/* Search Bar with Submit Button */}
+              <form onSubmit={handleSearchSubmit} className="flex gap-2 mb-3">
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 text-white/40 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    id="friend-search-input"
+                    type="text"
+                    autoFocus
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="친구의 아이디(@) 또는 이름 입력"
+                    className="w-full pl-10 pr-4 py-2.5 bg-white/5 border border-white/10 rounded-2xl text-white placeholder-white/30 text-sm focus:outline-none focus:border-blue-400/50 focus:ring-1 focus:ring-blue-500/30 transition-all backdrop-blur-sm"
+                  />
+                </div>
+                <button
+                  id="friend-search-submit-btn"
+                  type="submit"
+                  disabled={loadingSearch || !query.trim()}
+                  className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:hover:bg-blue-600 text-white font-semibold rounded-2xl text-xs shadow-md shadow-blue-600/30 border border-blue-400/30 transition-all flex items-center gap-1.5 shrink-0"
+                >
+                  {loadingSearch ? (
+                    <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <Search className="w-3.5 h-3.5" />
+                  )}
+                  <span>검색</span>
+                </button>
+              </form>
 
               {/* Search Results */}
               <div className="space-y-2">

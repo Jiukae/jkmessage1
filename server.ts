@@ -85,7 +85,7 @@ if (!fs.existsSync(UPLOADS_DIR)) {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 }
 
-// Initial seed data
+// Initial seed data - Admin jiukhan0215 only
 const initialUsers: UserRecord[] = [
   {
     id: "user_jiukhan0215",
@@ -98,18 +98,6 @@ const initialUsers: UserRecord[] = [
     status: "online",
     lastSeen: Date.now(),
     createdAt: Date.now() - 86400000 * 10,
-  },
-  {
-    id: "user_jiuk",
-    username: "jiuk",
-    name: "지욱 (Jiuk)",
-    password: "password123",
-    avatarBg: "from-blue-500 to-indigo-600",
-    avatarEmoji: "⚡",
-    customStatus: "새로운 프로젝트 구상 중 ✨",
-    status: "online",
-    lastSeen: Date.now(),
-    createdAt: Date.now() - 86400000 * 5,
   },
 ];
 
@@ -130,11 +118,44 @@ const COMMAND_BOT: UserRecord = {
   createdAt: 0,
 };
 
+interface BanRecord {
+  username: string;
+  reason?: string;
+  bannedAt: number;
+  bannedUntil?: number | null; // null for permanent
+}
+
 interface DBState {
   users: UserRecord[];
   friendRequests: FriendRequestRecord[];
   messages: MessageRecord[];
   groups: GroupRoomRecord[];
+  bans?: BanRecord[];
+  serverMaintenance?: {
+    enabled: boolean;
+    message: string;
+    startedAt: number;
+  };
+}
+
+function checkUserBan(username: string): { isBanned: boolean; reason?: string; untilStr?: string } {
+  if (!db.bans) db.bans = [];
+  const clean = username.toLowerCase();
+  const banIdx = db.bans.findIndex((b) => b.username.toLowerCase() === clean);
+  if (banIdx === -1) return { isBanned: false };
+
+  const ban = db.bans[banIdx];
+  if (ban.bannedUntil && ban.bannedUntil < Date.now()) {
+    // Expired timeban
+    db.bans.splice(banIdx, 1);
+    saveDB(db);
+    return { isBanned: false };
+  }
+
+  const untilStr = ban.bannedUntil
+    ? new Date(ban.bannedUntil).toLocaleString('ko-KR') + '까지'
+    : '영구 차단';
+  return { isBanned: true, reason: ban.reason || '관리자 제재', untilStr };
 }
 
 function loadDB(): DBState {
@@ -143,7 +164,10 @@ function loadDB(): DBState {
       const content = fs.readFileSync(DB_FILE, "utf-8").trim();
       if (content) {
         const data = JSON.parse(content);
-        const loadedUsers = Array.isArray(data.users) ? data.users : initialUsers;
+        let loadedUsers = Array.isArray(data.users) ? data.users : initialUsers;
+        // Purge legacy demo jiuk user
+        loadedUsers = loadedUsers.filter((u: UserRecord) => u.username.toLowerCase() !== "jiuk");
+
         // Ensure admin user jiukhan0215 is always present
         if (!loadedUsers.some((u: UserRecord) => u.username.toLowerCase() === "jiukhan0215")) {
           loadedUsers.unshift(initialUsers[0]);
@@ -153,6 +177,8 @@ function loadDB(): DBState {
           friendRequests: Array.isArray(data.friendRequests) ? data.friendRequests : initialFriendRequests,
           messages: Array.isArray(data.messages) ? data.messages : initialMessages,
           groups: Array.isArray(data.groups) ? data.groups : initialGroups,
+          bans: Array.isArray(data.bans) ? data.bans : [],
+          serverMaintenance: data.serverMaintenance || { enabled: false, message: '', startedAt: 0 },
         };
       }
     }
@@ -164,6 +190,8 @@ function loadDB(): DBState {
     friendRequests: [...initialFriendRequests],
     messages: [...initialMessages],
     groups: [...initialGroups],
+    bans: [],
+    serverMaintenance: { enabled: false, message: '', startedAt: 0 },
   };
 }
 
@@ -189,7 +217,9 @@ async function initFirestoreSync() {
     let hasRemoteData = false;
 
     if (!usersSnap.empty) {
-      db.users = usersSnap.docs.map((d) => d.data() as UserRecord);
+      db.users = usersSnap.docs
+        .map((d) => d.data() as UserRecord)
+        .filter((u) => u.username.toLowerCase() !== "jiuk");
       hasRemoteData = true;
     }
     if (!requestsSnap.empty) {
@@ -415,18 +445,262 @@ async function startServer() {
       return [
         `👑 **[JK Message 시스템 관리자 콘솔]** (접속자: @${adminUser.username})`,
         `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-        `• \`/help\` 또는 \`도움말\` : 명령어 도움말 출력`,
-        `• \`/users\` 또는 \`유저목록\` : 등록된 모든 사용자 목록 및 상태 조회`,
+        `[ 🛠️ 계정 제재 & 보안 명령어 ]`,
+        `• \`/ban <아이디> [사유]\` : 대상 유저 영구 밴 & 즉시 강제 퇴장`,
+        `• \`/timeban <아이디> <분|시간h|일d> [사유]\` : 대상 유저 일정 기간 임시 밴 (예: \`/timeban user1 30m 욕설\`)`,
+        `• \`/unban <아이디>\` : 제재된 유저 밴 해제 (차단 해제)`,
+        `• \`/banlist\` 또는 \`밴목록\` : 현재 차단/타임밴 중인 모든 유저 목록`,
+        `• \`/kick <아이디>\` : 대상 유저의 실시간 소켓 연결 강제 종료`,
+        ``,
+        `[ ⚡ 관리자 전용 특수 권한 & 시스템 제어 ]`,
+        `• \`/maintenance <on|off> [안내메시지]\` : 서버 긴급 점검 모드 가동 (일반 유저 로그인/접속 제한)`,
+        `• \`/broadcast <공지내용>\` : 전체 접속자에게 실시간 긴급 팝업 공지 전송`,
+        `• \`/wipe <all|groups|direct>\` : 시스템 전체 또는 특정 채팅 메시지 대량 일괄 정화`,
+        `• \`/setname <아이디> <새이름>\` : 관리자 권한으로 특정 유저 닉네임 강제 변경`,
+        `• \`/status <online|dnd|offline> [메시지]\` : 관리자 상태 및 상태메시지 즉시 변경`,
+        `• \`/users\` 또는 \`유저목록\` : 등록된 모든 사용자 목록 및 실시간 상태 조회`,
         `• \`/stats\` 또는 \`서버상태\` : 실시간 접속자, 소켓, DB 및 메시지 통계`,
         `• \`/info <아이디>\` : 특정 유저의 상세 정보 조회`,
-        `• \`/broadcast <공지내용>\` : 전체 접속자에게 실시간 긴급 공지 전송`,
-        `• \`/status <online|dnd|offline> [메시지]\` : 관리자 상태 및 상태메시지 즉시 변경`,
-        `• \`/kick <아이디>\` : 대상 유저의 실시간 소켓 연결 강제 종료`,
         `• \`/db\` : Firestore 클라우드 동기화 상태 점검`,
         `• \`/clear\` : 관리자 명령어 대화 내역 초기화`,
         `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
         `💡 팁: 아래 빠른 실행 버튼을 누르거나 채팅창에 명령어를 직접 입력하세요.`,
       ].join('\n');
+    }
+
+    if (main === '/ban' || main === '밴' || main === '차단') {
+      const targetUsername = args[0]?.replace(/^@/, '').toLowerCase();
+      const reason = args.slice(1).join(' ').trim() || '관리자 권한으로 영구 차단되었습니다.';
+      if (!targetUsername) {
+        return `⚠️ 사용법: \`/ban <유저아이디> [사유]\` (예: \`/ban user1 욕설 및 도배\`)`;
+      }
+      if (targetUsername === 'jiukhan0215') {
+        return `❌ 최고 관리자 계정은 밴할 수 없습니다.`;
+      }
+
+      const target = db.users.find((u) => u.username.toLowerCase() === targetUsername);
+      if (!db.bans) db.bans = [];
+      const existingIdx = db.bans.findIndex((b) => b.username.toLowerCase() === targetUsername);
+      if (existingIdx !== -1) {
+        db.bans[existingIdx] = { username: targetUsername, reason, bannedAt: Date.now(), bannedUntil: null };
+      } else {
+        db.bans.push({ username: targetUsername, reason, bannedAt: Date.now(), bannedUntil: null });
+      }
+
+      // If user is connected, forcefully disconnect with reason
+      if (target) {
+        const sockets = userSockets.get(target.id);
+        if (sockets && sockets.size > 0) {
+          for (const ws of sockets) {
+            ws.send(JSON.stringify({
+              type: 'system:kicked',
+              payload: { reason: `[계정 영구 차단] ${reason}` }
+            }));
+            ws.close();
+          }
+          userSockets.delete(target.id);
+          broadcastPresence();
+        }
+      }
+      saveDB(db);
+
+      return `🚫 **[영구 밴 조치 완료]**\n대상: @${targetUsername}\n사유: "${reason}"\n해당 계정은 즉시 접속이 차단되며 로그인할 수 없습니다.`;
+    }
+
+    if (main === '/timeban' || main === '타임밴' || main === '임시차단') {
+      const targetUsername = args[0]?.replace(/^@/, '').toLowerCase();
+      const durationStr = args[1]?.toLowerCase();
+      const reason = args.slice(2).join(' ').trim() || '관리자 권한으로 임시 차단되었습니다.';
+
+      if (!targetUsername || !durationStr) {
+        return `⚠️ 사용법: \`/timeban <아이디> <시간(예: 30m, 2h, 1d)> [사유]\`\n(예: \`/timeban user1 1h 비매너 행위\`)`;
+      }
+      if (targetUsername === 'jiukhan0215') {
+        return `❌ 최고 관리자 계정은 타임밴할 수 없습니다.`;
+      }
+
+      let durationMs = 0;
+      if (durationStr.endsWith('m') || durationStr.endsWith('분')) {
+        durationMs = parseInt(durationStr, 10) * 60 * 1000;
+      } else if (durationStr.endsWith('h') || durationStr.endsWith('시간')) {
+        durationMs = parseInt(durationStr, 10) * 3600 * 1000;
+      } else if (durationStr.endsWith('d') || durationStr.endsWith('일')) {
+        durationMs = parseInt(durationStr, 10) * 86400 * 1000;
+      } else {
+        durationMs = (parseInt(durationStr, 10) || 10) * 60 * 1000; // default minutes
+      }
+
+      if (isNaN(durationMs) || durationMs <= 0) {
+        return `⚠️ 유효한 기간을 입력해주세요. (예: 10m, 2h, 1d)`;
+      }
+
+      const bannedUntil = Date.now() + durationMs;
+      const untilDateStr = new Date(bannedUntil).toLocaleString('ko-KR');
+
+      if (!db.bans) db.bans = [];
+      const existingIdx = db.bans.findIndex((b) => b.username.toLowerCase() === targetUsername);
+      if (existingIdx !== -1) {
+        db.bans[existingIdx] = { username: targetUsername, reason, bannedAt: Date.now(), bannedUntil };
+      } else {
+        db.bans.push({ username: targetUsername, reason, bannedAt: Date.now(), bannedUntil });
+      }
+
+      const target = db.users.find((u) => u.username.toLowerCase() === targetUsername);
+      if (target) {
+        const sockets = userSockets.get(target.id);
+        if (sockets && sockets.size > 0) {
+          for (const ws of sockets) {
+            ws.send(JSON.stringify({
+              type: 'system:kicked',
+              payload: { reason: `[임시 이용 제한] ${untilDateStr}까지 접속이 제한됩니다. 사유: ${reason}` }
+            }));
+            ws.close();
+          }
+          userSockets.delete(target.id);
+          broadcastPresence();
+        }
+      }
+      saveDB(db);
+
+      return `⏳ **[타임밴 적용 완료]**\n대상: @${targetUsername}\n해제 예정: ${untilDateStr}\n사유: "${reason}"`;
+    }
+
+    if (main === '/unban' || main === '밴해제' || main === '차단해제') {
+      const targetUsername = args[0]?.replace(/^@/, '').toLowerCase();
+      if (!targetUsername) {
+        return `⚠️ 사용법: \`/unban <유저아이디>\` (예: \`/unban user1\`)`;
+      }
+      if (!db.bans) db.bans = [];
+      const beforeCount = db.bans.length;
+      db.bans = db.bans.filter((b) => b.username.toLowerCase() !== targetUsername);
+
+      if (db.bans.length === beforeCount) {
+        return `ℹ️ '@${targetUsername}' 유저는 제재 목록에 등록되어 있지 않습니다.`;
+      }
+      saveDB(db);
+      return `✨ **[밴 해제 완료]**\n@${targetUsername} 님의 차단이 성공적으로 해제되었습니다. 이제 정상적으로 로그인 및 이용이 가능합니다.`;
+    }
+
+    if (main === '/banlist' || main === '밴목록' || main === '차단목록') {
+      if (!db.bans || db.bans.length === 0) {
+        return `🛡️ 현재 차단되거나 제재를 받고 있는 사용자가 없습니다.`;
+      }
+
+      const lines = db.bans.map((b, idx) => {
+        const isPermanent = !b.bannedUntil;
+        const expiry = isPermanent ? '영구 차단' : `${new Date(b.bannedUntil!).toLocaleString('ko-KR')}까지 (임시)`;
+        return `${idx + 1}. **@${b.username}** - ${expiry}\n   └ 사유: ${b.reason || '사유 없음'} (제재일시: ${new Date(b.bannedAt).toLocaleString('ko-KR')})`;
+      });
+
+      return [
+        `🚫 **[현재 제재/밴 사용자 목록 (총 ${db.bans.length}명)]**`,
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+        lines.join('\n'),
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+        `💡 밴 해제: \`/unban <아이디>\``,
+      ].join('\n');
+    }
+
+    if (main === '/maintenance' || main === '점검' || main === '점검모드') {
+      const mode = args[0]?.toLowerCase();
+      const message = args.slice(1).join(' ').trim() || '서버 정기 점검 및 안정화 작업이 진행 중입니다.';
+
+      if (mode === 'on' || mode === '켜기' || mode === '시작') {
+        db.serverMaintenance = {
+          enabled: true,
+          message,
+          startedAt: Date.now(),
+        };
+        saveDB(db);
+
+        // Notify all clients and disconnect non-admin users
+        for (const client of wss.clients) {
+          if (client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify({
+              type: "system:broadcast",
+              payload: {
+                id: `maint_${Date.now()}`,
+                title: "⚠️ 서버 긴급 점검 안내",
+                message: `[점검 모드 가동] ${message}`,
+                senderName: "시스템",
+                timestamp: Date.now(),
+              }
+            }));
+          }
+        }
+
+        return `🚨 **[서버 점검 모드 가동]**\n일반 회원의 신규 로그인 및 접근이 차단되며 공지가 전파되었습니다.\n점검 안내 문구: "${message}"\n점검 해제: \`/maintenance off\``;
+      } else if (mode === 'off' || mode === '끄기' || mode === '종료') {
+        db.serverMaintenance = {
+          enabled: false,
+          message: '',
+          startedAt: 0,
+        };
+        saveDB(db);
+
+        for (const client of wss.clients) {
+          if (client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify({
+              type: "system:broadcast",
+              payload: {
+                id: `maint_off_${Date.now()}`,
+                title: "✨ 서버 점검 종료 안내",
+                message: `서버 점검이 완료되어 정상 서비스를 재개합니다.`,
+                senderName: "시스템",
+                timestamp: Date.now(),
+              }
+            }));
+          }
+        }
+
+        return `✅ **[서버 점검 모드 해제]**\n서버 점검이 종료되었으며 일반 사용자의 정상 접속이 활성화되었습니다.`;
+      } else {
+        const isCurrentlyOn = db.serverMaintenance?.enabled;
+        return `⚠️ 사용법: \`/maintenance <on|off> [안내메시지]\`\n현재 상태: ${isCurrentlyOn ? '🔴 점검 중' : '🟢 정상 운영 중'}`;
+      }
+    }
+
+    if (main === '/setname' || main === '닉네임변경' || main === '이름변경') {
+      const targetUsername = args[0]?.replace(/^@/, '').toLowerCase();
+      const newName = args.slice(1).join(' ').trim();
+      if (!targetUsername || !newName) {
+        return `⚠️ 사용법: \`/setname <아이디> <새이름>\` (예: \`/setname alex 알렉스\`)`;
+      }
+      const target = db.users.find((u) => u.username.toLowerCase() === targetUsername);
+      if (!target) {
+        return `❌ '@${targetUsername}' 사용자를 찾을 수 없습니다.`;
+      }
+      const oldName = target.name;
+      target.name = newName;
+      saveDB(db, { type: 'user', item: target });
+
+      const { password: _, ...safeUser } = target;
+      for (const client of wss.clients) {
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(JSON.stringify({
+            type: "user:profile_updated",
+            payload: { user: safeUser },
+          }));
+        }
+      }
+      return `✨ **[닉네임 강제 변경 완료]**\n@${target.username} 님의 표시 이름이 **'${oldName}'** ➔ **'${newName}'**(으)로 변경되었습니다.`;
+    }
+
+    if (main === '/wipe' || main === '대화정리') {
+      const scope = args[0]?.toLowerCase() || 'all';
+      if (scope === 'all' || scope === '전체') {
+        const count = db.messages.length;
+        db.messages = [];
+        saveDB(db);
+        return `🧹 **[전체 메시지 정화 완료]**\n총 ${count}개의 메시지 기록이 데이터베이스에서 완전히 삭제되었습니다.`;
+      } else if (scope === 'groups' || scope === '단체방') {
+        const before = db.messages.length;
+        db.messages = db.messages.filter((m) => !m.conversationId.startsWith('group_'));
+        saveDB(db);
+        return `🧹 **[단체방 메시지 정화]** ${before - db.messages.length}개의 단체방 메시지가 정리되었습니다.`;
+      } else {
+        return `⚠️ 사용법: \`/wipe <all|groups>\``;
+      }
     }
 
     if (main === '/users' || main === '유저목록' || main === '유저') {
@@ -766,6 +1040,19 @@ async function startServer() {
       return res.status(400).json({ error: "아이디는 3~20자의 영문 소문자, 숫자, 밑줄(_)만 가능합니다." });
     }
 
+    if (db.serverMaintenance?.enabled && cleanUsername !== 'jiukhan0215') {
+      return res.status(503).json({
+        error: `[서버 점검 중] ${db.serverMaintenance.message || '현재 시스템 점검으로 인해 신규 회원가입이 불가능합니다.'}`,
+      });
+    }
+
+    const banInfo = checkUserBan(cleanUsername);
+    if (banInfo.isBanned) {
+      return res.status(403).json({
+        error: `[계정 이용 제재] 해당 아이디는 차단된 상태입니다. (${banInfo.untilStr}, 사유: ${banInfo.reason})`,
+      });
+    }
+
     if (db.users.some((u) => u.username.toLowerCase() === cleanUsername)) {
       return res.status(400).json({ error: "이미 사용 중인 아이디입니다." });
     }
@@ -803,6 +1090,20 @@ async function startServer() {
     }
 
     const clean = username.trim().toLowerCase();
+
+    if (db.serverMaintenance?.enabled && clean !== 'jiukhan0215') {
+      return res.status(503).json({
+        error: `[서버 점검 중] ${db.serverMaintenance.message || '현재 시스템 점검이 진행 중입니다.'}`,
+      });
+    }
+
+    const banInfo = checkUserBan(clean);
+    if (banInfo.isBanned) {
+      return res.status(403).json({
+        error: `[계정 이용 제재] 접속이 차단된 계정입니다. (${banInfo.untilStr}, 사유: ${banInfo.reason})`,
+      });
+    }
+
     const user = db.users.find((u) => u.username.toLowerCase() === clean);
 
     if (!user || user.password !== password) {

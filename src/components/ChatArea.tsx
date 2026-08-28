@@ -1021,12 +1021,17 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
             </span>
             {[
               { label: '📋 /help', cmd: '/help' },
+              { label: '🚫 /ban', cmd: '/ban ' },
+              { label: '⏳ /timeban', cmd: '/timeban ' },
+              { label: '✨ /unban', cmd: '/unban ' },
+              { label: '🛡️ /banlist', cmd: '/banlist' },
+              { label: '⚠️ /maintenance', cmd: '/maintenance ' },
+              { label: '📢 /broadcast', cmd: '/broadcast ' },
               { label: '👥 /users', cmd: '/users' },
               { label: '📊 /stats', cmd: '/stats' },
-              { label: '📢 /broadcast', cmd: '/broadcast ' },
-              { label: '👤 /info', cmd: '/info ' },
-              { label: '🟢 /status online', cmd: '/status online' },
-              { label: '🔴 /status dnd', cmd: '/status dnd' },
+              { label: '⚡ /kick', cmd: '/kick ' },
+              { label: '✏️ /setname', cmd: '/setname ' },
+              { label: '🧹 /wipe', cmd: '/wipe all' },
               { label: '💾 /db', cmd: '/db' },
               { label: '🧹 /clear', cmd: '/clear' },
             ].map((chip) => (

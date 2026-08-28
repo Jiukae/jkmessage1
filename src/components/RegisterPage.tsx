@@ -231,7 +231,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onBack, onRegisterSu
                   required
                   value={username}
                   onChange={(e) => handleCheckUsername(e.target.value)}
-                  placeholder="아이디 입력 (예: jiuk_dev)"
+                  placeholder="영문, 숫자 3~20자 입력"
                   className="w-full pl-10 pr-24 py-2.5 bg-black/40 border border-white/15 rounded-xl text-sm text-white placeholder-white/30 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
                 />
                 <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
