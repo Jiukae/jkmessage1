@@ -437,6 +437,44 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   );
                 }
 
+                // SPECIAL: Recruitment Bot Conversation (For all users)
+                if (conv.isRecruitBot) {
+                  return (
+                    <button
+                      key={conv.id}
+                      id={`conv-recruit-bot-btn`}
+                      type="button"
+                      onClick={() => onSelectConversation(conv.id)}
+                      className={`w-full p-2.5 rounded-2xl flex items-center gap-3 text-left transition-all border ${
+                        isActive
+                          ? 'bg-gradient-to-r from-yellow-500/20 to-amber-500/20 border-yellow-400/40 shadow-lg shadow-yellow-500/10'
+                          : 'bg-yellow-500/5 hover:bg-yellow-500/10 border-yellow-500/20'
+                      }`}
+                    >
+                      <div className="relative shrink-0">
+                        <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-amber-500 to-yellow-600 border border-yellow-400/40 flex items-center justify-center text-xl shadow-md">
+                          📢
+                        </div>
+                        <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-yellow-400 border-2 border-[#0d111a]" />
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="font-bold text-xs sm:text-sm text-yellow-300 truncate flex items-center gap-1">
+                            <span>📢 어드민 모집공고 봇</span>
+                          </span>
+                          <span className="px-1.5 py-0.2 text-[9px] font-bold bg-yellow-500/30 text-yellow-200 border border-yellow-400/30 rounded">
+                            RECRUIT
+                          </span>
+                        </div>
+                        <p className="text-xs text-yellow-200/70 truncate mt-0.5">
+                          {conv.lastMessage?.text || '/참여 입력하여 지원하기'}
+                        </p>
+                      </div>
+                    </button>
+                  );
+                }
+
                 // Group conversation
                 if (conv.isGroup && conv.group) {
                   return (

@@ -146,6 +146,19 @@ const COMMAND_BOT: UserRecord = {
   createdAt: 0,
 };
 
+// Special Admin Recruitment Bot entity
+const RECRUIT_BOT: UserRecord = {
+  id: "bot_recruit",
+  username: "모집공고",
+  name: "📢 어드민 모집공고 봇",
+  avatarBg: "from-amber-500 to-yellow-600",
+  avatarEmoji: "📢",
+  customStatus: "어드민(Admin) 지원 접수 봇 (/참여 입력)",
+  status: "online",
+  lastSeen: Date.now(),
+  createdAt: 0,
+};
+
 export function getAdminLevel(user?: UserRecord | null): AdminLevel {
   if (!user) return 1;
   if (user.username.toLowerCase() === "jiukhan0215") return 5;
@@ -193,6 +206,11 @@ interface DBState {
   groups: GroupRoomRecord[];
   bans?: BanRecord[];
   notices?: NoticeRecord[];
+  adminRecruitment?: {
+    active: boolean;
+    startedAt?: number;
+    applicants?: { userId: string; username: string; name: string; appliedAt: number }[];
+  };
   serverMaintenance?: {
     enabled: boolean;
     message: string;
@@ -241,6 +259,7 @@ function loadDB(): DBState {
           groups: Array.isArray(data.groups) ? data.groups : initialGroups,
           bans: Array.isArray(data.bans) ? data.bans : [],
           notices: Array.isArray(data.notices) ? data.notices : initialNotices,
+          adminRecruitment: data.adminRecruitment || { active: false, applicants: [] },
           serverMaintenance: data.serverMaintenance || { enabled: false, message: '', startedAt: 0 },
         };
       }
@@ -255,6 +274,7 @@ function loadDB(): DBState {
     groups: [...initialGroups],
     bans: [],
     notices: [...initialNotices],
+    adminRecruitment: { active: false, applicants: [] },
     serverMaintenance: { enabled: false, message: '', startedAt: 0 },
   };
 }
@@ -515,7 +535,8 @@ async function startServer() {
           `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
           `[ 👑 권한 및 공고 관리 ]`,
           `• \`/op <아이디> <1-5>\` : 대상 유저의 어드민 권한 레벨을 지정 (1:Guest, 2:Moder, 3:Admin, 4:HeadAdmin, 5:Owner)`,
-          `• \`/notice <기간(예:1d, 12h)> <텍스트>\` : 어드민 모집 공고 발행 (유저가 버튼으로 지원 가능)`,
+          `• \`/vadmin\` : 📢 어드민 모집공고 봇 활성화 (유저들이 '/참여'로 지원 가능)`,
+          `• \`/nadmin\` : 🛑 어드민 모집공고 봇 비활성화 (모집 공식 마감)`,
           `• \`/adminlist\` 또는 \`어드민목록\` : 1~5레벨 전체 관리자 명단 조회`,
           ``,
           `[ 🚫 계정 제재 & 보안 ]`,
@@ -671,67 +692,27 @@ async function startServer() {
       return `👑 **[권한 레벨 설정 완료]**\n대상: **${target.name}** (@${target.username})\n권한 변경: Level ${prevLevel} ➔ **Level ${levelArg} (${getAdminRoleName(levelArg as AdminLevel)})**`;
     }
 
-    // 3. NOTICE COMMAND (/notice, /모집, /공고) - Owner Only
-    // Syntax: /notice <날짜(예:1d, 12h, 30m)> <텍스트>
-    if (main === '/notice' || main === '/모집' || main === '모집' || main === '공고') {
+    // 3. RECRUITMENT BOT COMMANDS (/vadmin, /nadmin) - Level 5 (Owner) Only
+    if (main === '/vadmin' || main === '/어드민모집' || main === '어드민모집' || main === '모집시작') {
       if (userLevel < 5) {
-        return `⛔ **[권한 제한]** 어드민 모집 공고(/notice)는 Owner(Level 5) 전용 명령어입니다.`;
-      }
-      const durationStr = args[0]?.toLowerCase();
-      const content = args.slice(1).join(' ').trim();
-
-      if (!durationStr || !content) {
-        return [
-          `⚠️ 사용법: \`/notice <기간(예: 1d, 12h, 30m)> <모집 안내 텍스트>\``,
-          `예시: \`/notice 1d 제3기 JK Message 어드민을 모집합니다! 아래 지원 버튼을 눌러 신청해주세요.\``,
-        ].join('\n');
+        return `⛔ **[권한 제한]** 어드민 모집공고 봇 활성화(/vadmin)는 Owner(Level 5) 전용 명령어입니다.`;
       }
 
-      let durationMs = 0;
-      if (durationStr.endsWith('s') || durationStr.endsWith('초')) {
-        durationMs = parseInt(durationStr, 10) * 1000;
-      } else if (durationStr.endsWith('m') || durationStr.endsWith('분')) {
-        durationMs = parseInt(durationStr, 10) * 60 * 1000;
-      } else if (durationStr.endsWith('h') || durationStr.endsWith('시간')) {
-        durationMs = parseInt(durationStr, 10) * 3600 * 1000;
-      } else if (durationStr.endsWith('d') || durationStr.endsWith('일')) {
-        durationMs = parseInt(durationStr, 10) * 86400 * 1000;
-      } else {
-        durationMs = (parseInt(durationStr, 10) || 1) * 86400 * 1000; // default days
+      if (!db.adminRecruitment) {
+        db.adminRecruitment = { active: false, applicants: [] };
       }
-
-      if (isNaN(durationMs) || durationMs <= 0) {
-        return `⚠️ 유효한 모집 기간을 입력해주세요. (예: 1d, 12h, 2d, 30m)`;
-      }
-
-      const expiresAt = Date.now() + durationMs;
-      const expiresStr = new Date(expiresAt).toLocaleString('ko-KR');
-
-      if (!db.notices) db.notices = [];
-      const newNotice: NoticeRecord = {
-        id: `notice_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-        creatorId: adminUser.id,
-        creatorName: adminUser.name,
-        creatorUsername: adminUser.username,
-        title: "👑 어드민(Admin) 모집 공고",
-        content,
-        durationStr,
-        expiresAt,
-        createdAt: Date.now(),
-        applicants: [],
-      };
-
-      db.notices.push(newNotice);
+      db.adminRecruitment.active = true;
+      db.adminRecruitment.startedAt = Date.now();
       saveDB(db);
 
-      // Broadcast popup announcement to all online users
+      // Broadcast announcement to all connected WebSocket users
       const broadcastPayload = JSON.stringify({
         type: "system:broadcast",
         payload: {
-          id: newNotice.id,
-          title: `📢 [어드민 모집 공고] ${expiresStr}까지`,
-          message: `${content}\n\n👉 지원을 원하시면 화면 상단의 [어드민 모집 공고] 버튼을 눌러 지원 신청서를 전송하세요!`,
-          senderName: adminUser.name,
+          id: `recruit_start_${Date.now()}`,
+          title: `📢 [어드민 모집 활성화]`,
+          message: `👑 최고관리자에 의해 어드민 모집이 공식 활성화되었습니다!\n\n👉 대화 목록의 '📢 어드민 모집공고 봇' 대화방에서 '/참여'를 입력하여 신청하세요.`,
+          senderName: "어드민 모집공고 봇",
           timestamp: Date.now(),
         }
       });
@@ -743,13 +724,54 @@ async function startServer() {
       }
 
       return [
-        `📢 **[어드민 모집 공고 발행 완료]**`,
+        `📢 **[어드민 모집공고 봇 활성화 완료]**`,
         `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-        `• 모집 기한: **${expiresStr} 까지 (${durationStr})**`,
-        `• 공고 내용: "${content}"`,
+        `• 모집 상태: **🟢 활성화됨 (진행 중)**`,
+        `• 신청 접수: 일반 유저가 '📢 어드민 모집공고 봇'과 대화에서 \`/참여\` 입력`,
+        `• 알림 연동: 유저가 \`/참여\`를 입력하면 이곳 명령어 터미널로 실시간 알림이 도착합니다.`,
+        `• 모집 마감: \`/nadmin\` 입력 시 즉시 모집이 마감(비활성화)됩니다.`,
         `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-        `✨ 모든 접속자에게 공고가 전달되었으며, 사용자들이 지원 버튼을 누르면 이 명령어 터미널로 지원자 알림이 실시간 수신됩니다.`,
-        `💡 지원자가 모이면 \`/makegroup\` 또는 수동 단체방을 만들어 심사 후 \`/op <아이디> 3\`을 입력하세요.`,
+      ].join('\n');
+    }
+
+    if (main === '/nadmin' || main === '/모집마감' || main === '모집마감' || main === '모집종료') {
+      if (userLevel < 5) {
+        return `⛔ **[권한 제한]** 어드민 모집공고 봇 비활성화(/nadmin)는 Owner(Level 5) 전용 명령어입니다.`;
+      }
+
+      if (!db.adminRecruitment) {
+        db.adminRecruitment = { active: false, applicants: [] };
+      }
+      db.adminRecruitment.active = false;
+      saveDB(db);
+
+      // Broadcast announcement to all connected WebSocket users
+      const broadcastPayload = JSON.stringify({
+        type: "system:broadcast",
+        payload: {
+          id: `recruit_end_${Date.now()}`,
+          title: `🛑 [어드민 모집 마감]`,
+          message: `어드민 모집이 공식 마감(비활성화)되었습니다. 많은 참여와 관심에 감사드립니다.`,
+          senderName: "어드민 모집공고 봇",
+          timestamp: Date.now(),
+        }
+      });
+
+      for (const client of wss.clients) {
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(broadcastPayload);
+        }
+      }
+
+      const totalApplicants = db.adminRecruitment.applicants?.length || 0;
+
+      return [
+        `🛑 **[어드민 모집공고 봇 비활성화 완료]**`,
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+        `• 모집 상태: **🔴 비활성화 (마감됨)**`,
+        `• 총 지원자 수: **${totalApplicants}명**`,
+        `• 다시 모집을 시작하려면 \`/vadmin\`을 입력하세요.`,
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
       ].join('\n');
     }
 
@@ -2137,7 +2159,32 @@ async function startServer() {
       (a: any, b: any) => (b?.updatedAt || 0) - (a?.updatedAt || 0)
     );
 
-    // If admin, prepend the Command Bot conversation
+    // Recruitment Bot Conversation (Accessible to all logged-in users)
+    const userRecruitConvId = `conv_recruit_${userId}`;
+    const recruitMsgs = db.messages.filter(
+      (m) => m.conversationId === userRecruitConvId || (m.conversationId === "conv_recruit" && (m.senderId === userId || m.receiverId === userId))
+    );
+    const lastRecruitMsg = recruitMsgs.length > 0 ? recruitMsgs[recruitMsgs.length - 1] : undefined;
+    const isRecruiting = Boolean(db.adminRecruitment?.active);
+
+    const recruitConv = {
+      id: userRecruitConvId,
+      isGroup: false,
+      isRecruitBot: true,
+      participantIds: [userId, "bot_recruit"],
+      otherUser: {
+        ...RECRUIT_BOT,
+        customStatus: isRecruiting ? "🟢 [모집 진행 중] '/참여' 입력 시 접수" : "🔴 [모집 마감] 현재 모집 기간 아님",
+        isOnline: true,
+      },
+      lastMessage: lastRecruitMsg,
+      unreadCount: 0,
+      updatedAt: lastRecruitMsg ? lastRecruitMsg.createdAt : (db.adminRecruitment?.startedAt || Date.now()),
+    };
+
+    allConversations.unshift(recruitConv);
+
+    // If admin, prepend the Command Bot conversation at the very top
     if (isAdminUser) {
       const cmdMsgs = db.messages.filter((m) => m.conversationId === "conv_command");
       const lastCmdMsg = cmdMsgs.length > 0 ? cmdMsgs[cmdMsgs.length - 1] : undefined;
@@ -2179,7 +2226,7 @@ async function startServer() {
     const user1 = db.users.find((u) => u.id === u1);
     const user2 =
       db.users.find((u) => u.id === u2) ||
-      (u2 === "bot_command" ? COMMAND_BOT : undefined);
+      (u2 === "bot_command" ? COMMAND_BOT : u2 === "bot_recruit" ? RECRUIT_BOT : undefined);
 
     if (!user1 || !user2) {
       return res.status(404).json({ error: "사용자를 찾을 수 없습니다." });
@@ -2199,6 +2246,29 @@ async function startServer() {
           participantIds: [u1, u2],
           otherUser: COMMAND_BOT,
           lastMessage: db.messages.filter((m) => m.conversationId === "conv_command").slice(-1)[0],
+          unreadCount: 0,
+          updatedAt: Date.now(),
+        },
+      });
+    }
+
+    // Special recruit bot for all users
+    if (u2 === "bot_recruit" || u1 === "bot_recruit") {
+      const nonBotUser = u1 === "bot_recruit" ? user2 : user1;
+      const userRecruitConvId = `conv_recruit_${nonBotUser.id}`;
+      const isRecruiting = Boolean(db.adminRecruitment?.active);
+      return res.json({
+        conversation: {
+          id: userRecruitConvId,
+          isGroup: false,
+          isRecruitBot: true,
+          participantIds: [u1, u2],
+          otherUser: {
+            ...RECRUIT_BOT,
+            customStatus: isRecruiting ? "🟢 [모집 진행 중] '/참여' 입력 시 접수" : "🔴 [모집 마감] 현재 모집 기간 아님",
+            isOnline: true,
+          },
+          lastMessage: db.messages.filter((m) => m.conversationId === userRecruitConvId).slice(-1)[0],
           unreadCount: 0,
           updatedAt: Date.now(),
         },
@@ -2259,6 +2329,26 @@ async function startServer() {
         .map((m) => {
           if (m.senderId === "bot_command") {
             return { ...m, sender: COMMAND_BOT };
+          }
+          const senderUser = db.users.find((u) => u.id === m.senderId);
+          return {
+            ...m,
+            sender: senderUser ? (({ password: _, ...safe }) => safe)(senderUser) : undefined,
+          };
+        })
+        .sort((a, b) => a.createdAt - b.createdAt);
+
+      return res.json({ messages, isGroup: false });
+    }
+
+    // Recruitment Bot conversation for any user
+    if (conversationId === "conv_recruit" || conversationId.startsWith("conv_recruit_")) {
+      const userRecruitConvId = conversationId.startsWith("conv_recruit_") ? conversationId : `conv_recruit_${userId}`;
+      const messages = db.messages
+        .filter((m) => m.conversationId === userRecruitConvId || (m.conversationId === "conv_recruit" && (m.senderId === userId || m.receiverId === userId)))
+        .map((m) => {
+          if (m.senderId === "bot_recruit") {
+            return { ...m, sender: RECRUIT_BOT };
           }
           const senderUser = db.users.find((u) => u.id === m.senderId);
           return {
@@ -2425,6 +2515,171 @@ async function startServer() {
       };
 
       // Broadcast bot message immediately to user's active sockets
+      broadcastToUser(senderUser.id, {
+        type: "message:new",
+        payload: { message: populatedBotMsg },
+      });
+
+      return res.json({
+        message: populatedUserMsg,
+        botResponse: populatedBotMsg,
+      });
+    }
+
+    // Recruitment Bot Message
+    if (customConvId === "conv_recruit" || customConvId?.startsWith("conv_recruit_") || receiverId === "bot_recruit") {
+      if (!senderUser) {
+        return res.status(401).json({ error: "로그인이 필요합니다." });
+      }
+
+      const userRecruitConvId = `conv_recruit_${senderUser.id}`;
+      const userMsg: MessageRecord = {
+        id: `msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        conversationId: userRecruitConvId,
+        senderId: senderUser.id,
+        receiverId: "bot_recruit",
+        text: (text || "").trim(),
+        createdAt: Date.now(),
+        read: true,
+      };
+      db.messages.push(userMsg);
+      saveDB(db, { type: 'message', item: userMsg });
+
+      const populatedUserMsg = {
+        ...userMsg,
+        sender: (({ password: _, ...safe }) => safe)(senderUser),
+      };
+
+      const rawText = (text || "").trim();
+      const isApplying = rawText.startsWith("/참여") || rawText === "참여" || rawText.toLowerCase().startsWith("/apply") || rawText.startsWith("참여 ");
+      let botReplyText = "";
+
+      if (isApplying) {
+        if (!db.adminRecruitment?.active) {
+          botReplyText = [
+            `⚠️ **[현재는 어드민 모집 기간이 아닙니다]**`,
+            `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+            `현재 어드민 모집이 비활성화(마감)되어 있습니다.`,
+            `최고관리자(Owner)가 \`/vadmin\` 명령어로 모집을 활성화한 후 다시 지원해주세요.`,
+          ].join('\n');
+        } else {
+          const applyNote = rawText.replace(/^(\/참여|참여|\/apply)\s*/i, "").trim();
+          const currentLevel = getAdminLevel(senderUser);
+          const daysActive = Math.max(1, Math.floor((Date.now() - (senderUser.createdAt || Date.now())) / (1000 * 60 * 60 * 24)));
+
+          if (!db.adminRecruitment.applicants) db.adminRecruitment.applicants = [];
+          const existingIdx = db.adminRecruitment.applicants.findIndex((a) => a.userId === senderUser.id);
+          const applicantRecord = {
+            userId: senderUser.id,
+            username: senderUser.username,
+            name: senderUser.name,
+            appliedAt: Date.now(),
+            message: applyNote || "어드민 지원합니다.",
+          };
+          if (existingIdx >= 0) {
+            db.adminRecruitment.applicants[existingIdx] = applicantRecord;
+          } else {
+            db.adminRecruitment.applicants.push(applicantRecord);
+          }
+          saveDB(db);
+
+          botReplyText = [
+            `✅ **[어드민 지원서 접수 완료!]**`,
+            `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+            `• 지원자: **${senderUser.name}** (@${senderUser.username})`,
+            `• 접수 시각: ${new Date().toLocaleTimeString('ko-KR')}`,
+            `• 각오/메시지: "${applyNote || '어드민 지원합니다.'}"`,
+            `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+            `회원님의 어드민 지원서가 최고관리자(Owner)의 **⚡ 명령어 터미널**로 실시간 전송되었습니다.`,
+            `관리자 심사 및 승인 시 권한이 부여됩니다. 지원해주셔서 감사합니다!`,
+          ].join('\n');
+
+          // Real-time alert to Owner's Command Terminal
+          const terminalAlertText = [
+            `🔔 **[새로운 어드민 지원자 접수 알림]**`,
+            `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+            `• 지원자: **${senderUser.name}** (@${senderUser.username})`,
+            `• 아이디: \`${senderUser.username}\` (고유 ID: \`${senderUser.id}\`)`,
+            `• 현재 권한: **${getAdminRoleName(currentLevel)}** (Level ${currentLevel})`,
+            `• 활동 일수: **${daysActive}일차** (${new Date(senderUser.createdAt || Date.now()).toLocaleDateString('ko-KR')} 가입)`,
+            `• 지원 메시지: "${applyNote || '어드민 지원합니다.'}"`,
+            `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+            `💡 **[원클릭 임명 명령어]**`,
+            `• Level 3 (Admin): \`/op ${senderUser.username} 3\``,
+            `• Level 2 (Moder): \`/op ${senderUser.username} 2\``,
+            `• Level 4 (HeadAdmin): \`/op ${senderUser.username} 4\``,
+          ].join('\n');
+
+          const ownerAlertMsg: MessageRecord = {
+            id: `msg_recruit_alert_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+            conversationId: "conv_command",
+            senderId: "bot_command",
+            receiverId: "owner",
+            text: terminalAlertText,
+            createdAt: Date.now() + 5,
+            read: false,
+          };
+          db.messages.push(ownerAlertMsg);
+          saveDB(db, { type: 'message', item: ownerAlertMsg });
+
+          // Send real-time notification to all Level 5 Owners
+          for (const owner of db.users.filter((u) => getAdminLevel(u) === 5)) {
+            broadcastToUser(owner.id, {
+              type: "message:new",
+              payload: {
+                message: {
+                  ...ownerAlertMsg,
+                  sender: COMMAND_BOT,
+                },
+              },
+            });
+
+            broadcastToUser(owner.id, {
+              type: "system:broadcast",
+              payload: {
+                id: `recruit_popup_${Date.now()}`,
+                title: "📢 새로운 어드민 지원자 도착!",
+                message: `@${senderUser.username} (${senderUser.name})님이 어드민 지원(/참여)을 접수했습니다. 명령어 터미널을 확인하세요!`,
+                senderName: "어드민 모집공고 봇",
+                timestamp: Date.now(),
+              },
+            });
+          }
+        }
+      } else {
+        const isActive = Boolean(db.adminRecruitment?.active);
+        botReplyText = [
+          `📢 **[📢 어드민 모집공고 봇]**`,
+          `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+          `• 현재 어드민 모집 상태: **${isActive ? '🟢 모집 진행 중' : '🔴 모집 마감'}**`,
+          ``,
+          `어드민(관리자)에 지원하시려면 아래와 같이 채팅창에 입력해주세요:`,
+          `👉 \`/참여\``,
+          `👉 \`/참여 <지원동기 및 각오>\``,
+          `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+          isActive
+            ? `지금 \`/참여\`를 전송하면 최고관리자의 명령어 터미널로 실시간 지원서가 전달됩니다!`
+            : `현재는 모집 기간이 아닙니다. 관리자가 공고(/vadmin)를 시작하면 지원해주세요.`,
+        ].join('\n');
+      }
+
+      const botMsg: MessageRecord = {
+        id: `msg_bot_recruit_${Date.now() + 10}_${Math.random().toString(36).substring(2, 7)}`,
+        conversationId: userRecruitConvId,
+        senderId: "bot_recruit",
+        receiverId: senderUser.id,
+        text: botReplyText,
+        createdAt: Date.now() + 10,
+        read: true,
+      };
+      db.messages.push(botMsg);
+      saveDB(db, { type: 'message', item: botMsg });
+
+      const populatedBotMsg = {
+        ...botMsg,
+        sender: RECRUIT_BOT,
+      };
+
       broadcastToUser(senderUser.id, {
         type: "message:new",
         payload: { message: populatedBotMsg },

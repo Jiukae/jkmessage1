@@ -1023,8 +1023,9 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
             // Level 5 (Owner): All commands
             chips = [
               { label: '📋 /help', cmd: '/help' },
+              { label: '📢 /vadmin (모집활성화)', cmd: '/vadmin' },
+              { label: '🛑 /nadmin (모집비활성화)', cmd: '/nadmin' },
               { label: '👑 /op <id> <1-5>', cmd: '/op ' },
-              { label: '📢 /notice <시간> <글>', cmd: '/notice 1d ' },
               { label: '👥 /adminlist', cmd: '/adminlist' },
               { label: '🚫 /ban', cmd: '/ban ' },
               { label: '⏳ /timeban', cmd: '/timeban ' },
@@ -1113,6 +1114,35 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
             </div>
           );
         })()}
+
+        {/* Recruitment Bot Quick Chips */}
+        {(conversationId === 'conv_recruit' || conversationId?.startsWith('conv_recruit_') || partner?.id === 'bot_recruit') && (
+          <div className="mb-2.5 flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+            <span className="text-[10px] text-yellow-300/80 font-mono shrink-0 mr-1 flex items-center gap-1">
+              <span>📢 지원 명령어:</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setInputText('/참여 ');
+                textareaRef.current?.focus();
+              }}
+              className="px-2.5 py-1 rounded-lg bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-200 border border-yellow-500/40 text-[11px] font-bold whitespace-nowrap transition-colors"
+            >
+              ✍️ /참여 (지원서 작성)
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setInputText('/참여 열정적으로 활동하겠습니다!');
+                textareaRef.current?.focus();
+              }}
+              className="px-2.5 py-1 rounded-lg bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-200/80 border border-yellow-500/20 text-[11px] whitespace-nowrap transition-colors"
+            >
+              🚀 빠른 지원 제출
+            </button>
+          </div>
+        )}
 
         <form onSubmit={handleSend} className="flex items-center gap-2 sm:gap-3 bg-white/5 border border-white/10 rounded-2xl p-2 focus-within:border-indigo-400/40 focus-within:ring-1 focus-within:ring-indigo-500/30 transition-all backdrop-blur-sm">
           

@@ -96,6 +96,7 @@ export interface Conversation {
   id: string;
   isGroup?: boolean;
   isCommandBot?: boolean;
+  isRecruitBot?: boolean;
   group?: GroupRoom;
   participantIds: string[];
   otherUser?: User; // for 1:1 chats
